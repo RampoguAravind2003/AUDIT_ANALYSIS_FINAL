@@ -1135,9 +1135,16 @@ def get_series_for_allotted_hours(name: str, semester: str):
 def get_bigquery_client():
     project_id = get_config("BQ_PROJECT_ID", DEFAULT_PROJECT_ID)
 
-    credentials = service_account.Credentials.from_service_account_file(
-        "service-account.json"
-    )
+    # Streamlit Cloud: credentials are in st.secrets["gcp_service_account"]
+    if "gcp_service_account" in st.secrets:
+        credentials = service_account.Credentials.from_service_account_info(
+            dict(st.secrets["gcp_service_account"])
+        )
+    else:
+        # Local fallback: load from service-account.json file
+        credentials = service_account.Credentials.from_service_account_file(
+            "service-account.json"
+        )
 
     return bigquery.Client(
         project=project_id,
