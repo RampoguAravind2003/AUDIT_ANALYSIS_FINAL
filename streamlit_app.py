@@ -19,6 +19,11 @@ DEFAULT_USERS_TABLE = "niat_and_intensive_offline_users_details"
 DEFAULT_CONTENT_TABLE = "content_all_products_unit_wise_content_hierarchy_details"
 DEFAULT_SCHEDULE_TABLE = "niat_and_intensive_offline_section_wise_daily_learning_schedule_details"
 DEFAULT_PROGRESS_TABLE = "niat_learning_progress_course_wise_stats"
+DEFAULT_SKILL_GRADED_TABLE = "curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores"
+DEFAULT_UNLOCKED_UNITS_TABLE = "curriculum_ops_niat_2025_users_batch_wise_unlocked_units_completion_details"
+DEFAULT_QUIZ_ATTEMPTS_TABLE = "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details"
+DEFAULT_SESSION_ADHERENCE_TABLE = "curriculum_ops_niat_2025_users_week_wise_session_completion_adherence_details"
+DEFAULT_PORTAL_COURSES_TABLE = "curriculum_ops_semester_subject_wise_portal_course_details"
 
 SERIES_RANGES = [
     {"name": "300", "min": 0, "max": 350},
@@ -900,87 +905,173 @@ def build_university_timeline_rows(universities, semester: str, batch: str):
 
 
 
-def build_university_overview_rows(universities, semester: str, batch: str, progress_slots_df: pd.DataFrame | None = None):
+def build_university_overview_rows(
+    universities,
+    semester: str,
+    batch: str,
+    progress_slots_df: pd.DataFrame | None = None,
+    new_metrics: dict | None = None,
+):
+    """
+    Builds the University Overview table with all 20 requested fields.
+
+    New metrics dict structure (keyed by institute name):
+      new_metrics["quiz"][institute]         → classroom_quiz_attempt_pct, classroom_quiz_pass_pct,
+                                               module_quiz_conducted, module_quiz_participation_pct, module_quiz_pass_pct
+      new_metrics["practice"][institute]    → practice_completion_pct
+      new_metrics["delivery"][institute]    → practice_delivery_pct, module_quiz_conduction_pct, skill_conduction_pct
+      new_metrics["skill_graded"][institute]→ skill_conducted, skill_participation_pct, skill_pass_pct, academic_attempt_pct, academic_pass_pct
+
+    Metric formulas:
+      Deviation %            = (Actual - Expected Till Date) / Expected Till Date × 100  (negative = behind)
+      Session Delivery %     = (Actual Slots Delivered Till Date / Expected Slots Till Date) × 100
+      Practice Delivery %    = (practice_delivered_count / planned_practice_sessions) × 100
+      Module Quiz Conduction %  = (module_quiz_conducted / planned_module_quizzes) × 100
+      Skill Assessment Conduction % = (skill_conducted / planned_skill_assessments) × 100
+
+    Pass threshold: ≥80% score throughout.
+    """
     timeline_df = build_university_timeline_rows(universities, semester, batch)
-    progress_slots = {}
+
+    # ── progress slots (existing) ─────────────────────────────────────────────
+    progress_slots: dict = {}
     if progress_slots_df is not None and not progress_slots_df.empty:
         progress_slots = {
             row["institute"]: {
                 "delivered_slots": float(row["delivered_slots"]) if pd.notna(row.get("delivered_slots")) else None,
-                "lecture_delivered_slots": float(row["lecture_delivered_slots"]) if pd.notna(row.get("lecture_delivered_slots")) else None,
-                "practice_delivered_slots": float(row["practice_delivered_slots"]) if pd.notna(row.get("practice_delivered_slots")) else None,
                 "lecture_completion_pct": float(row["lecture_completion_pct"]) if pd.notna(row.get("lecture_completion_pct")) else None,
                 "practice_completion_pct": float(row["practice_completion_pct"]) if pd.notna(row.get("practice_completion_pct")) else None,
             }
             for _, row in progress_slots_df.dropna(subset=["institute"]).iterrows()
         }
-    metric_rows = pd.DataFrame(
-        [
-            {
-                "University": item["name"],
-                "Actual slots delivered till date": round(
-                    min(
-                        (
-                            progress_slots.get(item["name"], {}).get("delivered_slots")
-                            if item["name"] in progress_slots
-                            else item.get("avgLecturePracticeSessions", 0)
-                        ),
-                        item["allottedHours"]
-                        if item.get("allottedHours") is not None
-                        else (
-                            progress_slots.get(item["name"], {}).get("delivered_slots")
-                            if item["name"] in progress_slots
-                            else item.get("avgLecturePracticeSessions", 0)
-                        ),
-                    ),
-                    1,
-                ),
-                "Session completion %": round(
-                    progress_slots.get(item["name"], {}).get("lecture_completion_pct")
-                    if progress_slots.get(item["name"], {}).get("lecture_completion_pct") is not None
-                    else item["avgLectureCompletion"],
-                    1,
-                ),
-                "Practice completion %": round(
-                    progress_slots.get(item["name"], {}).get("practice_completion_pct")
-                    if progress_slots.get(item["name"], {}).get("practice_completion_pct") is not None
-                    else item["avgPracticeCompletion"],
-                    1,
-                ),
-                "Academic assessments %": round(item["avgGradedScore"] * 100, 1) if item.get("avgGradedScore") is not None else None,
-                "Non-skilled assessments pass #": round(item["avgAcademicPassCount"], 1) if item.get("avgAcademicPassCount") is not None else None,
-                "Skill assessments %": round(item["avgSkillScore"] * 100, 1) if item.get("avgSkillScore") is not None else None,
-            }
-            for item in sorted(universities, key=lambda value: value["name"])
-        ]
-    )
-    if metric_rows.empty:
+
+    # ── new metrics lookups ───────────────────────────────────────────────────
+    nm = new_metrics or {}
+    quiz_data: dict         = nm.get("quiz", {})
+    practice_data: dict     = nm.get("practice", {})
+    delivery_data: dict     = nm.get("delivery", {})   # from session_adherence
+    skill_graded_data: dict = nm.get("skill_graded", {})
+
+    def _get(d: dict, institute: str, key: str):
+        row = d.get(institute, {})
+        val = row.get(key)
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return None
+        return float(val)
+
+    def _pct(numerator, denominator):
+        """Safe percentage: returns None if denominator is zero/None."""
+        if numerator is None or denominator is None or denominator == 0:
+            return None
+        return round(min((numerator / denominator) * 100, 999.9), 1)
+
+    metric_rows = []
+    for item in sorted(universities, key=lambda v: v["name"]):
+        name = item["name"]
+
+        # ── Actual slots delivered till date ──────────────────────────────────
+        delivered = _get(progress_slots, name, "delivered_slots")
+        if delivered is None:
+            delivered = item.get("avgLecturePracticeSessions", 0)
+        allotted = item.get("allottedHours")
+        if allotted is not None:
+            delivered = min(delivered, float(allotted))
+        actual_slots = round(delivered, 1)
+
+        # ── Expected slots till date (from timeline) ──────────────────────────
+        # Will be filled after merging with timeline_df; placeholder here.
+        # We store actual_slots per university and compute derivations post-merge.
+
+        metric_rows.append({
+            "University": name,
+            "Actual Slots Delivered Till Date": actual_slots,
+            # ── Session Delivery % replaces old Session completion % ───────────
+            # Computed post-merge once Expected Slots Till Date is available.
+            # ── Practice Completion % (from unlocked_units; fallback to progress table) ──
+            "Practice Completion %": round(v, 1) if (v := _get(practice_data, name, "practice_completion_pct")) is not None
+                else (round(v2, 1) if (v2 := _get(progress_slots, name, "practice_completion_pct")) is not None else None),
+            # ── Classroom Quizzes ─────────────────────────────────────────────
+            "Class Room Quizzes Attempt %": round(v, 1) if (v := _get(quiz_data, name, "classroom_quiz_attempt_pct")) is not None else None,
+            "Class Room Quizzes Pass %":    round(v, 1) if (v := _get(quiz_data, name, "classroom_quiz_pass_pct")) is not None else None,
+            # ── Practice Delivery % (from session_adherence) ─────────────────
+            "Practice Delivery %":          round(v, 1) if (v := _get(delivery_data, name, "practice_delivery_pct")) is not None else None,
+            # ── Module Quiz ───────────────────────────────────────────────────
+            "Module Quiz Conduction %":     round(v, 1) if (v := _get(delivery_data, name, "module_quiz_conduction_pct")) is not None else None,
+            "Module Quiz Student Participation %": round(v, 1) if (v := _get(quiz_data, name, "module_quiz_participation_pct")) is not None else None,
+            "Module Quiz Pass %":           round(v, 1) if (v := _get(quiz_data, name, "module_quiz_pass_pct")) is not None else None,
+            # ── Skill Assessment ──────────────────────────────────────────────
+            "Skill Assessment Conduction %":    round(v, 1) if (v := _get(delivery_data, name, "skill_conduction_pct")) is not None else None,
+            "Skill Assessment Student Participation %": round(v, 1) if (v := _get(skill_graded_data, name, "skill_participation_pct")) is not None else None,
+            "Skill Assessment Pass %":      round(v, 1) if (v := _get(skill_graded_data, name, "skill_pass_pct")) is not None else None,
+            # ── Academic Assessments ──────────────────────────────────────────
+            "Academic Assessments Attempt %": round(v, 1) if (v := _get(skill_graded_data, name, "academic_attempt_pct")) is not None else None,
+            "Academic Assessments Pass %":    round(v, 1) if (v := _get(skill_graded_data, name, "academic_pass_pct")) is not None else None,
+        })
+
+    if not metric_rows:
         return timeline_df
-    overview_df = timeline_df.merge(metric_rows, on="University", how="left").reset_index(drop=True)
-    overview_df["Expected slots"] = overview_df["Net NIAT Executional Slots"]
-    overview_df["Expected slots till date"] = overview_df["Expected Slots"]
-    overview_df["Deviation"] = (
-        overview_df["Actual slots delivered till date"] - overview_df["Expected slots till date"]
-    ).abs().round(1)
+
+    metric_df = pd.DataFrame(metric_rows)
+    overview_df = timeline_df.merge(metric_df, on="University", how="left").reset_index(drop=True)
+
+    # ── Derived columns that need Expected Slots Till Date ────────────────────
+    # timeline_df already has "Expected Slots" = paced value (slots expected till today).
+    # We rename that to "Expected Slots Till Date", then set "Expected Slots" = full-semester total.
+    overview_df["Expected Slots Till Date"] = overview_df["Expected Slots"]   # paced-to-date from timeline
+    overview_df["Expected Slots"] = overview_df["Net NIAT Executional Slots"] # full semester total
+
+    def _row_pct(row, num_col, denom_col):
+        num = row.get(num_col)
+        den = row.get(denom_col)
+        if num is None or den is None or pd.isna(num) or pd.isna(den) or den == 0:
+            return None
+        return round(min((float(num) / float(den)) * 100, 999.9), 1)
+
+    overview_df["Session Delivery %"] = overview_df.apply(
+        lambda r: _row_pct(r, "Actual Slots Delivered Till Date", "Expected Slots Till Date"), axis=1
+    )
+    overview_df["Deviation %"] = overview_df.apply(
+        lambda r: round(
+            (float(r["Actual Slots Delivered Till Date"]) - float(r["Expected Slots Till Date"]))
+            / float(r["Expected Slots Till Date"]) * 100, 1
+        )
+        if pd.notna(r.get("Expected Slots Till Date")) and float(r.get("Expected Slots Till Date", 0) or 0) != 0
+        else None,
+        axis=1,
+    )
+    # Practice Delivery %, Module Quiz Conduction %, Skill Assessment Conduction %
+    # are already computed per-institute in fetch_session_delivery_metrics and
+    # stored directly in metric_rows — no post-merge calculation needed.
+
+    # ── Rename and filter ─────────────────────────────────────────────────────
     overview_df = overview_df.rename(columns={"University": "Universities"})
     overview_df = overview_df[
         overview_df["Universities"].astype(str).str.strip().str.casefold() != "aurora university"
     ].reset_index(drop=True)
+
     return overview_df[
         [
             "Universities",
             "Delivery Mode",
             "Start Date",
             "End Date",
-            "Expected slots",
-            "Expected slots till date",
-            "Actual slots delivered till date",
-            "Deviation",
-            "Session completion %",
-            "Practice completion %",
-            "Non-skilled assessments pass #",
-            "Skill assessments %",
-            "Academic assessments %",
+            "Expected Slots",
+            "Expected Slots Till Date",
+            "Actual Slots Delivered Till Date",
+            "Deviation %",
+            "Session Delivery %",
+            "Class Room Quizzes Attempt %",
+            "Class Room Quizzes Pass %",
+            "Practice Delivery %",
+            "Practice Completion %",
+            "Module Quiz Conduction %",
+            "Module Quiz Student Participation %",
+            "Module Quiz Pass %",
+            "Skill Assessment Conduction %",
+            "Skill Assessment Student Participation %",
+            "Skill Assessment Pass %",
+            "Academic Assessments Attempt %",
+            "Academic Assessments Pass %",
         ]
     ]
 
@@ -1039,19 +1130,19 @@ def get_series_for_allotted_hours(name: str, semester: str):
     return get_series_for_value(hours)
 
 
+
 @st.cache_resource(show_spinner=False)
 def get_bigquery_client():
     project_id = get_config("BQ_PROJECT_ID", DEFAULT_PROJECT_ID)
-    if "gcp_service_account" in st.secrets:
-        credentials = service_account.Credentials.from_service_account_info(dict(st.secrets["gcp_service_account"]))
-        return bigquery.Client(project=project_id or credentials.project_id, credentials=credentials)
 
-    credentials_json = get_config("BQ_CREDENTIALS_JSON")
-    if credentials_json:
-        credentials = service_account.Credentials.from_service_account_info(json.loads(credentials_json))
-        return bigquery.Client(project=project_id or credentials.project_id, credentials=credentials)
+    credentials = service_account.Credentials.from_service_account_file(
+        "service-account.json"
+    )
 
-    return bigquery.Client(project=project_id)
+    return bigquery.Client(
+        project=project_id,
+        credentials=credentials
+    )
 
 
 def format_table_ref(table_ref: str, default_table: str) -> str:
@@ -1090,6 +1181,11 @@ def get_table_refs():
         "content": format_table_ref(get_config("BQ_CONTENT_TABLE", DEFAULT_CONTENT_TABLE), DEFAULT_CONTENT_TABLE),
         "schedule": format_table_ref(get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE), DEFAULT_SCHEDULE_TABLE),
         "progress": format_table_ref(get_config("BQ_PROGRESS_TABLE", DEFAULT_PROGRESS_TABLE), DEFAULT_PROGRESS_TABLE),
+        "skill_graded": format_table_ref(get_config("BQ_SKILL_GRADED_TABLE", DEFAULT_SKILL_GRADED_TABLE), DEFAULT_SKILL_GRADED_TABLE),
+        "unlocked_units": format_table_ref(get_config("BQ_UNLOCKED_UNITS_TABLE", DEFAULT_UNLOCKED_UNITS_TABLE), DEFAULT_UNLOCKED_UNITS_TABLE),
+        "quiz_attempts": format_table_ref(get_config("BQ_QUIZ_ATTEMPTS_TABLE", DEFAULT_QUIZ_ATTEMPTS_TABLE), DEFAULT_QUIZ_ATTEMPTS_TABLE),
+        "session_adherence": format_table_ref(get_config("BQ_SESSION_ADHERENCE_TABLE", DEFAULT_SESSION_ADHERENCE_TABLE), DEFAULT_SESSION_ADHERENCE_TABLE),
+        "portal_courses": format_table_ref(get_config("BQ_PORTAL_COURSES_TABLE", DEFAULT_PORTAL_COURSES_TABLE), DEFAULT_PORTAL_COURSES_TABLE),
     }
 
 
@@ -1353,6 +1449,415 @@ def fetch_progress_delivered_slots(batch: str, semester: str) -> pd.DataFrame:
         ORDER BY institute
     """
     return run_query(sql)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
+    """
+    Returns per-institute quiz metrics from quiz_best_attempts_and_completion_details.
+
+    Actual schema used:
+      institute_name, batch_name, user_id, quiz_id,
+      derived_unit_type, best_attempt_evaluation_result, session_date
+
+    Classification via derived_unit_type:
+      CLASSROOM_QUIZ                            → classroom category
+      MODULE_QUIZ | DAILY_QUIZ | COURSE_QUIZ    → module category
+
+    Pass/Fail: best_attempt_evaluation_result = 'PASS'
+
+    Aggregation is done at institute level (not per-section AVG) to ensure
+    the roster denominator always resolves correctly regardless of section-name
+    differences between tables.
+    """
+    refs = get_table_refs()
+    where_clauses = ["TRIM(COALESCE(q.institute_name, '')) != ''"]
+    window_clause = get_semester_window_clause(semester, batch, "q.institute_name", "q.session_date")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(q.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    sql = f"""
+        WITH institute_roster AS (
+          -- Total enrolled students per institute (sum across all sections)
+          SELECT
+            u.institute_name AS institute,
+            COUNT(DISTINCT u.user_id) AS total_students
+          FROM {refs["users"]} u
+          WHERE TRIM(COALESCE(u.institute_name, '')) != ''
+          GROUP BY institute
+        ),
+        quiz_base AS (
+          -- One row per (user, quiz); best_attempt_evaluation_result is already the best result
+          SELECT
+            q.institute_name AS institute,
+            q.user_id,
+            q.quiz_id,
+            CASE
+              WHEN q.derived_unit_type = 'CLASSROOM_QUIZ'                               THEN 'classroom'
+              WHEN q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')  THEN 'module'
+              ELSE 'other'
+            END AS quiz_category,
+            -- Pass flag: LIKE '%PASS%' covers PASS, PASSED, and any vendor-specific variant
+            (UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%') AS is_pass
+          FROM {refs["quiz_attempts"]} q
+          WHERE {' AND '.join(where_clauses)}
+            AND q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
+        ),
+        quiz_totals AS (
+          -- Aggregate directly at institute level; classroom and module are counted independently
+          SELECT
+            institute,
+            -- Classroom: attempted = at least one classroom quiz taken; passed = at least one PASS
+            COUNT(DISTINCT IF(quiz_category = 'classroom', user_id, NULL))              AS classroom_attempted,
+            COUNT(DISTINCT IF(quiz_category = 'classroom' AND is_pass, user_id, NULL))  AS classroom_passed,
+            -- Module: conducted = distinct quiz_ids; attempted/passed = distinct user_ids
+            COUNT(DISTINCT IF(quiz_category = 'module', quiz_id, NULL))                 AS module_quiz_conducted,
+            COUNT(DISTINCT IF(quiz_category = 'module', user_id, NULL))                 AS module_attempted,
+            COUNT(DISTINCT IF(quiz_category = 'module' AND is_pass, user_id, NULL))     AS module_passed
+          FROM quiz_base
+          GROUP BY institute
+        )
+        SELECT
+          qt.institute,
+          -- Classroom Quiz Attempt %: unique users who took a classroom quiz / total enrolled
+          ROUND(SAFE_DIVIDE(qt.classroom_attempted, NULLIF(ir.total_students,      0)) * 100, 1) AS classroom_quiz_attempt_pct,
+          -- Classroom Quiz Pass %: unique users who passed ≥1 classroom quiz / unique who attempted
+          ROUND(SAFE_DIVIDE(qt.classroom_passed,    NULLIF(qt.classroom_attempted, 0)) * 100, 1) AS classroom_quiz_pass_pct,
+          qt.module_quiz_conducted,
+          -- Module Quiz Participation %: unique users who took a module quiz / total enrolled
+          ROUND(SAFE_DIVIDE(qt.module_attempted,    NULLIF(ir.total_students,      0)) * 100, 1) AS module_quiz_participation_pct,
+          -- Module Quiz Pass %: unique users who passed ≥1 module quiz / unique who attempted
+          ROUND(SAFE_DIVIDE(qt.module_passed,       NULLIF(qt.module_attempted,    0)) * 100, 1) AS module_quiz_pass_pct
+        FROM quiz_totals qt
+        LEFT JOIN institute_roster ir ON ir.institute = qt.institute
+        ORDER BY qt.institute
+    """
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame(columns=["institute", "classroom_quiz_attempt_pct", "classroom_quiz_pass_pct",
+                                     "module_quiz_conducted", "module_quiz_participation_pct", "module_quiz_pass_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_practice_completion(batch: str, semester: str) -> pd.DataFrame:
+    """
+    Returns per-institute practice completion metrics from unlocked_units_completion_details.
+
+    Actual schema used:
+      institute_name, section_name, batch_name, user_id, unit_id,
+      unit_type ('PRACTICE'), derived_unit_type ('MCQ_PRACTICE'),
+      unit_completion_status ('COMPLETED' | 'IN_PROGRESS' | 'YET_TO_START'), session_date
+
+    Practice Completion % = students with at least one COMPLETED practice unit / total enrolled.
+    """
+    refs = get_table_refs()
+    where_clauses = [
+        "TRIM(COALESCE(uu.institute_name, '')) != ''",
+        "uu.unit_type = 'PRACTICE'",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "uu.institute_name", "uu.session_date")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(uu.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    sql = f"""
+        WITH institute_roster AS (
+          SELECT
+            u.institute_name AS institute,
+            COUNT(DISTINCT u.user_id) AS total_students
+          FROM {refs["users"]} u
+          WHERE TRIM(COALESCE(u.institute_name, '')) != ''
+          GROUP BY institute
+        ),
+        practice_completed AS (
+          -- Distinct users who completed at least one practice unit, per institute
+          SELECT
+            uu.institute_name AS institute,
+            COUNT(DISTINCT uu.user_id) AS students_completed_practice
+          FROM {refs["unlocked_units"]} uu
+          WHERE {' AND '.join(where_clauses)}
+            AND uu.unit_completion_status = 'COMPLETED'
+          GROUP BY uu.institute_name
+        )
+        SELECT
+          pc.institute,
+          -- Practice Completion %: students with ≥1 completed practice unit / total enrolled
+          ROUND(SAFE_DIVIDE(pc.students_completed_practice, NULLIF(ir.total_students, 0)) * 100, 1) AS practice_completion_pct
+        FROM practice_completed pc
+        LEFT JOIN institute_roster ir ON ir.institute = pc.institute
+        ORDER BY pc.institute
+    """
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame(columns=["institute", "practice_completion_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_session_delivery_metrics(batch: str, semester: str) -> pd.DataFrame:
+    """
+    Returns per-institute practice delivery, module quiz conduction, and skill assessment
+    conduction metrics from week_wise_session_completion_adherence_details.
+
+    Actual schema used:
+      institute_name, section_name, batch_name, session_type ('LECTURE'|'PRACTICE'|'EXAM'),
+      session_name_enum, session_date, total_sessions_planned, total_sessions_delivered,
+      semester_title
+
+    Practice Delivery %      = SUM(delivered PRACTICE) / SUM(planned PRACTICE) × 100
+    Module Quiz Conduction % = SUM(delivered EXAM where name contains 'quiz') /
+                               SUM(planned  EXAM where name contains 'quiz') × 100
+    Skill Assessment Conduction % = SUM(delivered EXAM where name contains 'skill') /
+                                    SUM(planned  EXAM where name contains 'skill') × 100
+
+    Note: total_sessions_planned / total_sessions_delivered are cumulative per-row values.
+    We take MAX per (institute, section, course_title) to get the latest running total,
+    then SUM across courses within an institute.
+    """
+    refs = get_table_refs()
+    where_clauses = ["TRIM(COALESCE(sa.institute_name, '')) != ''"]
+    window_clause = get_semester_window_clause(semester, batch, "sa.institute_name", "sa.session_date")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(sa.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    sql = f"""
+        WITH filtered AS (
+          SELECT
+            sa.institute_name    AS institute,
+            sa.section_name      AS section,
+            sa.course_title      AS course,
+            sa.session_type,
+            sa.session_name_enum,
+            -- Take the final (max) cumulative totals per section-course combination
+            MAX(sa.total_sessions_planned)   AS planned,
+            MAX(sa.total_sessions_delivered) AS delivered
+          FROM {refs["session_adherence"]} sa
+          WHERE {' AND '.join(where_clauses)}
+          GROUP BY institute, section, course, session_type, session_name_enum
+        ),
+        per_institute AS (
+          SELECT
+            institute,
+            -- Practice Delivery
+            SUM(CASE WHEN session_type = 'PRACTICE'
+                     THEN COALESCE(delivered, 0) ELSE 0 END)          AS practice_delivered,
+            SUM(CASE WHEN session_type = 'PRACTICE'
+                     THEN COALESCE(planned, 0)   ELSE 0 END)          AS practice_planned,
+            -- Module Quiz (EXAM sessions whose name contains 'quiz')
+            SUM(CASE WHEN session_type = 'EXAM'
+                      AND REGEXP_CONTAINS(LOWER(COALESCE(session_name_enum, '')), r'quiz')
+                     THEN COALESCE(delivered, 0) ELSE 0 END)          AS mq_delivered,
+            SUM(CASE WHEN session_type = 'EXAM'
+                      AND REGEXP_CONTAINS(LOWER(COALESCE(session_name_enum, '')), r'quiz')
+                     THEN COALESCE(planned, 0)   ELSE 0 END)          AS mq_planned,
+            -- Skill Assessment (EXAM sessions whose name contains 'skill')
+            SUM(CASE WHEN session_type = 'EXAM'
+                      AND REGEXP_CONTAINS(LOWER(COALESCE(session_name_enum, '')), r'skill')
+                     THEN COALESCE(delivered, 0) ELSE 0 END)          AS sa_delivered,
+            SUM(CASE WHEN session_type = 'EXAM'
+                      AND REGEXP_CONTAINS(LOWER(COALESCE(session_name_enum, '')), r'skill')
+                     THEN COALESCE(planned, 0)   ELSE 0 END)          AS sa_planned
+          FROM filtered
+          GROUP BY institute
+        )
+        SELECT
+          institute,
+          ROUND(SAFE_DIVIDE(practice_delivered, NULLIF(practice_planned, 0)) * 100, 1) AS practice_delivery_pct,
+          ROUND(SAFE_DIVIDE(mq_delivered,       NULLIF(mq_planned,       0)) * 100, 1) AS module_quiz_conduction_pct,
+          ROUND(SAFE_DIVIDE(sa_delivered,       NULLIF(sa_planned,       0)) * 100, 1) AS skill_conduction_pct
+        FROM per_institute
+        ORDER BY institute
+    """
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame(columns=["institute", "practice_delivery_pct", "module_quiz_conduction_pct", "skill_conduction_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
+    """
+    Returns per-institute skill and academic assessment metrics from
+    curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores.
+
+    Actual schema used:
+      institute_name, section_name, batch_name, user_id, assessment_id,
+      assessment_type ('SKILL_ASSESSMENT' | 'GRADED_ASSESSMENT' | *_MOCK variants),
+      section_evaluation_result ('PASSED' | 'FAILED'),
+      assessment_start_datetime
+
+    Skill:    assessment_type = 'SKILL_ASSESSMENT'   (excludes MOCK)
+    Academic: assessment_type = 'GRADED_ASSESSMENT'  (excludes MOCK)
+    Pass:     section_evaluation_result = 'PASSED'
+    """
+    refs = get_table_refs()
+    where_clauses = [
+        "TRIM(COALESCE(sg.institute_name, '')) != ''",
+        "sg.assessment_type IN ('SKILL_ASSESSMENT', 'GRADED_ASSESSMENT')",
+    ]
+    date_expr = "DATE(sg.assessment_start_datetime)"
+    window_clause = get_semester_window_clause(semester, batch, "sg.institute_name", date_expr)
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(sg.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    sql = f"""
+        WITH institute_roster AS (
+          SELECT
+            u.institute_name AS institute,
+            COUNT(DISTINCT u.user_id) AS total_students
+          FROM {refs["users"]} u
+          WHERE TRIM(COALESCE(u.institute_name, '')) != ''
+          GROUP BY institute
+        ),
+        sg_base AS (
+          SELECT
+            sg.institute_name AS institute,
+            sg.user_id,
+            sg.assessment_id,
+            sg.assessment_type,
+            -- Pass: section_evaluation_result covers all common pass values
+            -- ('PASS', 'PASSED', 'CLEARED', 'ABOVE_CUTOFF', 'ABOVE CUTOFF')
+            -- Fail values ('FAIL', 'FAILED', 'NOT_CLEARED', 'BELOW_CUTOFF') are excluded implicitly.
+            -- Uses LIKE '%PASS%' as a broad net so no schema variation is missed.
+            (UPPER(TRIM(COALESCE(sg.section_evaluation_result, ''))) LIKE '%PASS%') AS is_passed
+          FROM {refs["skill_graded"]} sg
+          WHERE {' AND '.join(where_clauses)}
+        ),
+        sg_totals AS (
+          -- Aggregate at institute level; SKILL_ASSESSMENT and GRADED_ASSESSMENT are counted separately
+          SELECT
+            institute,
+            COUNT(DISTINCT IF(assessment_type = 'SKILL_ASSESSMENT', assessment_id, NULL))             AS skill_conducted,
+            COUNT(DISTINCT IF(assessment_type = 'SKILL_ASSESSMENT', user_id, NULL))                   AS skill_attempted,
+            COUNT(DISTINCT IF(assessment_type = 'SKILL_ASSESSMENT' AND is_passed, user_id, NULL))     AS skill_passed,
+            COUNT(DISTINCT IF(assessment_type = 'GRADED_ASSESSMENT', user_id, NULL))                  AS academic_attempted,
+            COUNT(DISTINCT IF(assessment_type = 'GRADED_ASSESSMENT' AND is_passed, user_id, NULL))    AS academic_passed
+          FROM sg_base
+          GROUP BY institute
+        )
+        SELECT
+          st.institute,
+          st.skill_conducted,
+          -- Skill Assessment Participation %: unique users attempted / total enrolled
+          ROUND(SAFE_DIVIDE(st.skill_attempted,    NULLIF(ir.total_students,    0)) * 100, 1) AS skill_participation_pct,
+          -- Skill Assessment Pass %: passed / attempted (section_evaluation_result = PASSED)
+          ROUND(SAFE_DIVIDE(st.skill_passed,       NULLIF(st.skill_attempted,   0)) * 100, 1) AS skill_pass_pct,
+          -- Academic Assessments Attempt %: unique users attempted / total enrolled
+          ROUND(SAFE_DIVIDE(st.academic_attempted, NULLIF(ir.total_students,    0)) * 100, 1) AS academic_attempt_pct,
+          -- Academic Assessments Pass %: passed / attempted (section_evaluation_result = PASSED)
+          ROUND(SAFE_DIVIDE(st.academic_passed,    NULLIF(st.academic_attempted, 0)) * 100, 1) AS academic_pass_pct
+        FROM sg_totals st
+        LEFT JOIN institute_roster ir ON ir.institute = st.institute
+        ORDER BY st.institute
+    """
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame(columns=["institute", "skill_conducted", "skill_participation_pct",
+                                     "skill_pass_pct", "academic_attempt_pct", "academic_pass_pct"])
+
+
+def fetch_all_new_metrics(batch: str, semester: str) -> dict:
+    """
+    Fetches all new metric DataFrames and returns them keyed by name.
+    Each inner dict is keyed by institute name for O(1) lookup in build_university_overview_rows.
+    """
+    quiz_df          = fetch_quiz_metrics(batch, semester)
+    practice_df      = fetch_practice_completion(batch, semester)
+    delivery_df      = fetch_session_delivery_metrics(batch, semester)
+    skill_graded_df  = fetch_skill_graded_metrics(batch, semester)
+
+    def to_dict(df: pd.DataFrame, key: str = "institute") -> dict:
+        if df.empty or key not in df.columns:
+            return {}
+        return {row[key]: row.to_dict() for _, row in df.iterrows()}
+
+    return {
+        "quiz":          to_dict(quiz_df),
+        "practice":      to_dict(practice_df),
+        "delivery":      to_dict(delivery_df),
+        "skill_graded":  to_dict(skill_graded_df),
+    }
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_pass_field_values(batch: str, semester: str) -> dict:
+    """
+    Diagnostic helper: returns the distinct values of the pass/fail fields
+    in quiz_attempts and skill_graded tables so mismatches can be caught quickly.
+    """
+    refs = get_table_refs()
+    batch_filter_q = ""
+    if should_apply_batch_filter(batch):
+        batch_filter_q = f"AND LOWER(COALESCE(batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'"
+    sql = f"""
+        SELECT 'quiz: best_attempt_evaluation_result' AS source,
+               CAST(best_attempt_evaluation_result AS STRING) AS raw_value,
+               COUNT(*) AS row_count
+        FROM {refs["quiz_attempts"]}
+        WHERE TRIM(COALESCE(institute_name, '')) != '' {batch_filter_q}
+          AND derived_unit_type IN ('CLASSROOM_QUIZ','MODULE_QUIZ','DAILY_QUIZ','COURSE_QUIZ')
+        GROUP BY source, raw_value
+        UNION ALL
+        SELECT 'skill_graded: section_evaluation_result' AS source,
+               CAST(section_evaluation_result AS STRING) AS raw_value,
+               COUNT(*) AS row_count
+        FROM {refs["skill_graded"]}
+        WHERE TRIM(COALESCE(institute_name, '')) != '' {batch_filter_q}
+          AND assessment_type IN ('SKILL_ASSESSMENT','GRADED_ASSESSMENT')
+        GROUP BY source, raw_value
+        ORDER BY source, raw_value
+    """
+    try:
+        return run_query(sql).to_dict("records")
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_sem_course_titles(batch: str, semester: str) -> dict:
+    """
+    Returns {normalized_name → sem_course_title} from portal_courses for the given
+    batch/semester.  Used to map content-level course titles to the official semester
+    subject names in the Course Breakdown table.
+    """
+    refs = get_table_refs()
+    where_clauses = ["TRIM(COALESCE(pc.sem_course_title, '')) != ''"]
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(pc.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    sem_num = ""
+    if "1" in semester:
+        sem_num = "1"
+    elif "2" in semester:
+        sem_num = "2"
+    if sem_num:
+        where_clauses.append(f"LOWER(COALESCE(pc.semester_name, '')) LIKE '%semester {sem_num}%'")
+    sql = f"""
+        SELECT DISTINCT TRIM(pc.sem_course_title) AS sem_course_title
+        FROM {refs["portal_courses"]} pc
+        WHERE {' AND '.join(where_clauses)}
+        ORDER BY sem_course_title
+    """
+    try:
+        df = run_query(sql)
+        if df.empty:
+            return {}
+        result = {}
+        for title in df["sem_course_title"].dropna().unique():
+            title = str(title).strip()
+            if title:
+                result[normalize_text(title)] = title
+        return result
+    except Exception:
+        return {}
 
 
 def fetch_assessment_data(batch: str, semester: str) -> pd.DataFrame:
@@ -1768,13 +2273,18 @@ def get_roster_size_for_scope(data_df: pd.DataFrame, section: str):
     return float(scoped.groupby("section")["students"].max().sum())
 
 
-def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame, institute: str, section: str, semester: str):
+def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame, institute: str, section: str, semester: str, sem_course_titles: dict | None = None):
     filtered = data_df[data_df["institute"] == institute].copy()
     if section:
         filtered = filtered[filtered["section"] == section]
     if filtered.empty:
         return None
     filtered["normalized_course"] = filtered["course"].apply(lambda course: normalize_course_name(course, semester))
+    # Map normalized course names to official sem_course_title where available
+    sem_titles = sem_course_titles or {}
+
+    def _display_course(name: str) -> str:
+        return sem_titles.get(normalize_text(name), name)
     lecture_df = filtered[filtered["session_type"] == "LECTURE"]
     practice_df = filtered[filtered["session_type"] == "PRACTICE"]
     exam_df = filtered[filtered["session_type"] == "EXAM"]
@@ -1796,7 +2306,7 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
         graded_assessment_row = summarize_assessment_subset(assessment_row, "Graded Assessment")
         course_records.append(
             {
-                "Course": course_name,
+                "Course": _display_course(course_name),
                 "Lecture Slots": round(lecture["sessions"], 2) if lecture else 0,
                 "Practice Slots": round(practice["sessions"], 2) if practice else 0,
                 "Exam Slots": round(exam["sessions"], 2) if exam else 0,
@@ -2178,15 +2688,21 @@ def main():
             semester_df = fetch_semester_data(batch, semester)
             progress_slots_df = fetch_progress_delivered_slots(batch, semester)
             assessment_df = fetch_assessment_data(batch, semester)
+            new_metrics = fetch_all_new_metrics(batch, semester)
+            sem_course_titles = fetch_sem_course_titles(batch, semester)
             st.session_state["semester_df"] = semester_df
             st.session_state["progress_slots_df"] = progress_slots_df
             st.session_state["assessment_df"] = assessment_df
+            st.session_state["new_metrics"] = new_metrics
+            st.session_state["sem_course_titles"] = sem_course_titles
             st.session_state["batch"] = batch
             st.session_state["semester"] = semester
 
     semester_df = st.session_state.get("semester_df", pd.DataFrame())
     progress_slots_df = st.session_state.get("progress_slots_df", pd.DataFrame())
     assessment_df = st.session_state.get("assessment_df", pd.DataFrame())
+    new_metrics = st.session_state.get("new_metrics", {})
+    sem_course_titles = st.session_state.get("sem_course_titles", {})
 
     if semester_df.empty:
         st.warning("No semester data returned. Check the selected filters and Streamlit Cloud secrets.")
@@ -2354,7 +2870,7 @@ def main():
         ]
     ).sort_values(["Avg Delivery %", "University"], ascending=[False, True]).reset_index(drop=True)
 
-    university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester)
+    university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles)
     if university_metrics is None:
         st.warning("No university data available for the current selection.")
         st.stop()
@@ -2362,7 +2878,7 @@ def main():
     dates = get_semester_dates_for_institute(selected_university, semester, batch)
 
     timeline_df = build_university_timeline_rows(all_universities, semester, batch)
-    overview_df = build_university_overview_rows(all_universities, semester, batch, progress_slots_df)
+    overview_df = build_university_overview_rows(all_universities, semester, batch, progress_slots_df, new_metrics)
     if analysis_type == "overview":
         current_view = st.session_state.get("current_view", "University Overview")
     else:
@@ -2413,19 +2929,27 @@ def main():
                 on_select="rerun",
                 selection_mode="single-row",
                 column_config={
-                    "Universities": st.column_config.TextColumn("Universities"),
-                    "Delivery Mode": st.column_config.TextColumn("Delivery Mode"),
-                    "Start Date": st.column_config.TextColumn("Start Date"),
-                    "End Date": st.column_config.TextColumn("End Date"),
-                    "Expected slots": st.column_config.NumberColumn("Expected slots", format="%.1f"),
-                    "Expected slots till date": st.column_config.NumberColumn("Expected slots till date", format="%.1f"),
-                    "Actual slots delivered till date": st.column_config.NumberColumn("Actual slots delivered till date", format="%.1f"),
-                    "Deviation": st.column_config.NumberColumn("Deviation", format="%.1f"),
-                    "Session completion %": st.column_config.NumberColumn("Session completion %", format="%.1f%%"),
-                    "Practice completion %": st.column_config.NumberColumn("Practice completion %", format="%.1f%%"),
-                    "Non-skilled assessments pass #": st.column_config.NumberColumn("Non-skilled assessments pass #", format="%.1f"),
-                    "Skill assessments %": st.column_config.NumberColumn("Skill assessments %", format="%.1f%%"),
-                    "Academic assessments %": st.column_config.NumberColumn("Academic assessments %", format="%.1f%%"),
+                    "Universities":                          st.column_config.TextColumn("Universities"),
+                    "Delivery Mode":                         st.column_config.TextColumn("Delivery Mode"),
+                    "Start Date":                            st.column_config.TextColumn("Start Date"),
+                    "End Date":                              st.column_config.TextColumn("End Date"),
+                    "Expected Slots":                        st.column_config.NumberColumn("Expected Slots", format="%.1f"),
+                    "Expected Slots Till Date":              st.column_config.NumberColumn("Expected Slots Till Date", format="%.1f"),
+                    "Actual Slots Delivered Till Date":      st.column_config.NumberColumn("Actual Slots Delivered Till Date", format="%.1f"),
+                    "Deviation %":                           st.column_config.NumberColumn("Deviation %", format="%.1f%%", help="(Actual − Expected Till Date) / Expected Till Date × 100. Negative = behind schedule."),
+                    "Session Delivery %":                    st.column_config.NumberColumn("Session Delivery %", format="%.1f%%", help="Actual Slots Delivered Till Date / Expected Slots Till Date × 100"),
+                    "Class Room Quizzes Attempt %":          st.column_config.NumberColumn("Class Room Quizzes Attempt %", format="%.1f%%", help="Students who attempted classroom quizzes / total enrolled × 100"),
+                    "Class Room Quizzes Pass %":             st.column_config.NumberColumn("Class Room Quizzes Pass %", format="%.1f%%", help="Students scored ≥80% / students who attempted classroom quizzes × 100"),
+                    "Practice Delivery %":                   st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%", help="Practice units delivered / planned practice sessions × 100"),
+                    "Practice Completion %":                 st.column_config.NumberColumn("Practice Completion %", format="%.1f%%", help="Students who completed practice / total enrolled × 100"),
+                    "Module Quiz Conduction %":              st.column_config.NumberColumn("Module Quiz Conduction %", format="%.1f%%", help="Module quizzes conducted / planned module quizzes × 100"),
+                    "Module Quiz Student Participation %":   st.column_config.NumberColumn("Module Quiz Student Participation %", format="%.1f%%", help="Students who attempted module quiz / total enrolled × 100"),
+                    "Module Quiz Pass %":                    st.column_config.NumberColumn("Module Quiz Pass %", format="%.1f%%", help="Students scored ≥80% / students attempted module quiz × 100"),
+                    "Skill Assessment Conduction %":         st.column_config.NumberColumn("Skill Assessment Conduction %", format="%.1f%%", help="Skill assessments conducted / planned skill assessments × 100"),
+                    "Skill Assessment Student Participation %": st.column_config.NumberColumn("Skill Assessment Student Participation %", format="%.1f%%", help="Students attempted skill assessment / total enrolled × 100"),
+                    "Skill Assessment Pass %":               st.column_config.NumberColumn("Skill Assessment Pass %", format="%.1f%%", help="Students passed (section_evaluation_result=PASSED) / students attempted skill assessment × 100"),
+                    "Academic Assessments Attempt %":        st.column_config.NumberColumn("Academic Assessments Attempt %", format="%.1f%%", help="Students who attempted graded assessments / total enrolled × 100"),
+                    "Academic Assessments Pass %":           st.column_config.NumberColumn("Academic Assessments Pass %", format="%.1f%%", help="Students passed (section_evaluation_result=PASSED) / students attempted academic assessments × 100"),
                 },
             )
             selected_rows = []
@@ -2560,7 +3084,7 @@ def main():
             with nav_col_3:
                 selected_section_label = st.selectbox("Section", section_options, key="selected_section_label")
             selected_section = "" if selected_section_label == "All Sections" else selected_section_label
-            university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester)
+            university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles)
             if university_metrics is None:
                 st.warning("No university data available for the current selection.")
                 st.stop()
@@ -2618,6 +3142,13 @@ def main():
                 - `Academic Assessment Score %` / `Academic Assessment Participation #`: visible score and attempts for mapped academic assessments.
                 """
             )
+        with st.expander("Pass field diagnostics (debug)"):
+            diag = fetch_pass_field_values(batch, semester)
+            if diag:
+                st.dataframe(pd.DataFrame(diag), use_container_width=True, hide_index=True)
+                st.caption("Shows distinct values of best_attempt_evaluation_result (quiz) and section_evaluation_result (skill/graded). Pass comparison uses IN ('PASS','PASSED').")
+            else:
+                st.caption("No diagnostic data returned.")
         st.dataframe(
             course_table,
             use_container_width=True,

@@ -1,0 +1,265 @@
+{
+  "overview_table_fields": [
+    {
+      "column": "Universities",
+      "description": "University / institute name",
+      "type": "dimension",
+      "source_table": "niat_and_intensive_offline_users_details",
+      "source_column": "institute_name",
+      "formula": "TRIM(COALESCE(u.institute_name, ''))",
+      "null_handling": "Exclude rows where institute_name is blank"
+    },
+    {
+      "column": "Delivery Mode",
+      "description": "Mode of program delivery (e.g. OFFLINE, ONLINE)",
+      "type": "dimension",
+      "source_table": "niat_and_intensive_offline_users_details",
+      "source_column": "delivery_mode",
+      "formula": "u.delivery_mode",
+      "null_handling": "NULL shown as blank"
+    },
+    {
+      "column": "Start Date",
+      "description": "Semester start date for the university",
+      "type": "dimension",
+      "source_table": "niat_and_intensive_offline_users_details",
+      "source_column": "semester_start_date",
+      "formula": "MIN(u.semester_start_date)",
+      "null_handling": "NULL shown as blank"
+    },
+    {
+      "column": "End Date",
+      "description": "Semester end date for the university",
+      "type": "dimension",
+      "source_table": "niat_and_intensive_offline_users_details",
+      "source_column": "semester_end_date",
+      "formula": "MAX(u.semester_end_date)",
+      "null_handling": "NULL shown as blank"
+    },
+    {
+      "column": "Expected Slots",
+      "description": "Total planned session slots for the full semester (Net NIAT Executional Slots)",
+      "type": "metric",
+      "source_table": "curriculum_ops_semester_subject_wise_portal_course_details",
+      "source_column": "net_niat_executional_slots",
+      "formula": "SUM(net_niat_executional_slots) aggregated per institute across all subjects",
+      "null_handling": "NULL treated as 0"
+    },
+    {
+      "column": "Expected Slots Till Date",
+      "description": "Pro-rated expected slots from semester start up to today, based on weekday pacing",
+      "type": "metric",
+      "source_table": "computed",
+      "source_column": "calculated",
+      "formula": "calculate_expected_slots_to_date(start_date, end_date, total_slots): counts weekdays from start_date to min(today, end_date), divides by total semester weekdays, multiplies by total_slots",
+      "null_handling": "Returns 0 if start_date is None or total_slots is 0"
+    },
+    {
+      "column": "Actual Slots Delivered Till Date",
+      "description": "Number of sessions actually delivered up to today",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_progress_details",
+      "source_column": "sessions_delivered_count",
+      "formula": "SUM(sessions_delivered_count) per institute, filtered to batch and semester",
+      "null_handling": "NULL treated as 0"
+    },
+    {
+      "column": "Deviation %",
+      "description": "Signed percentage deviation of actual delivery vs expected pace. Negative = behind schedule.",
+      "type": "metric",
+      "source_table": "computed",
+      "source_column": "calculated",
+      "formula": "((Actual Slots Delivered Till Date - Expected Slots Till Date) / Expected Slots Till Date) * 100",
+      "null_handling": "Returns None (shown as N/A) when Expected Slots Till Date is 0 or None"
+    },
+    {
+      "column": "Session Delivery %",
+      "description": "Percentage of expected-to-date slots that have been delivered",
+      "type": "metric",
+      "source_table": "computed",
+      "source_column": "calculated",
+      "formula": "(Actual Slots Delivered Till Date / Expected Slots Till Date) * 100",
+      "null_handling": "Returns None (shown as N/A) when Expected Slots Till Date is 0 or None"
+    },
+    {
+      "column": "Class Room Quizzes Attempt %",
+      "description": "Percentage of enrolled students who attempted at least one classroom quiz",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
+      "source_column": "derived_unit_type, user_id",
+      "formula": "AVG across sections of (COUNT DISTINCT users with derived_unit_type='CLASSROOM_QUIZ' / total_students) * 100",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when total_students = 0"
+    },
+    {
+      "column": "Class Room Quizzes Pass %",
+      "description": "Percentage of students who attempted classroom quizzes and passed (best_attempt_evaluation_result = 'PASS')",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
+      "source_column": "derived_unit_type, best_attempt_evaluation_result, user_id",
+      "formula": "AVG across sections of (COUNT DISTINCT users where derived_unit_type='CLASSROOM_QUIZ' AND best_attempt_evaluation_result='PASS' / COUNT DISTINCT users who attempted classroom quiz) * 100",
+      "pass_field": "best_attempt_evaluation_result = 'PASS'",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when no classroom quiz attempts"
+    },
+    {
+      "column": "Practice Delivery %",
+      "description": "Percentage of planned practice sessions that were delivered",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_week_wise_session_completion_adherence_details",
+      "source_column": "session_type, total_sessions_delivered, total_sessions_planned",
+      "formula": "(SUM of MAX(total_sessions_delivered) where session_type='PRACTICE' / SUM of MAX(total_sessions_planned) where session_type='PRACTICE') * 100",
+      "null_handling": "SAFE_DIVIDE used; MAX() per group applied before SUM() because columns are cumulative"
+    },
+    {
+      "column": "Practice Completion %",
+      "description": "Percentage of enrolled students who completed at least one practice unit",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_unlocked_units_completion_details",
+      "source_column": "unit_type, unit_completion_status, user_id",
+      "formula": "AVG across sections of (COUNT DISTINCT users where unit_type='PRACTICE' AND unit_completion_status='COMPLETED' / total_students) * 100",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when total_students = 0"
+    },
+    {
+      "column": "Module Quiz Conduction %",
+      "description": "Percentage of planned module quiz sessions that were conducted",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_week_wise_session_completion_adherence_details",
+      "source_column": "session_type, session_name_enum, total_sessions_delivered, total_sessions_planned",
+      "formula": "(SUM of MAX(delivered) where session_type='EXAM' AND LOWER(session_name_enum) CONTAINS 'quiz' / SUM of MAX(planned) for same filter) * 100",
+      "null_handling": "SAFE_DIVIDE used; MAX() per group before SUM() because columns are cumulative"
+    },
+    {
+      "column": "Module Quiz Student Participation %",
+      "description": "Percentage of enrolled students who attempted at least one module quiz (MODULE_QUIZ, DAILY_QUIZ, or COURSE_QUIZ)",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
+      "source_column": "derived_unit_type, user_id",
+      "formula": "AVG across sections of (COUNT DISTINCT users where derived_unit_type IN ('MODULE_QUIZ','DAILY_QUIZ','COURSE_QUIZ') / total_students) * 100",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when total_students = 0"
+    },
+    {
+      "column": "Module Quiz Pass %",
+      "description": "Percentage of students who attempted module quizzes and passed (best_attempt_evaluation_result = 'PASS')",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
+      "source_column": "derived_unit_type, best_attempt_evaluation_result, user_id",
+      "formula": "AVG across sections of (COUNT DISTINCT users where derived_unit_type IN ('MODULE_QUIZ','DAILY_QUIZ','COURSE_QUIZ') AND best_attempt_evaluation_result='PASS' / COUNT DISTINCT users who attempted module quiz) * 100",
+      "pass_field": "best_attempt_evaluation_result = 'PASS'",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when no module quiz attempts"
+    },
+    {
+      "column": "Skill Assessment Conduction %",
+      "description": "Percentage of planned skill assessment sessions that were conducted",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_week_wise_session_completion_adherence_details",
+      "source_column": "session_type, session_name_enum, total_sessions_delivered, total_sessions_planned",
+      "formula": "(SUM of MAX(delivered) where session_type='EXAM' AND LOWER(session_name_enum) CONTAINS 'skill' / SUM of MAX(planned) for same filter) * 100",
+      "null_handling": "SAFE_DIVIDE used; MAX() per group before SUM() because columns are cumulative"
+    },
+    {
+      "column": "Skill Assessment Student Participation %",
+      "description": "Percentage of enrolled students who participated in at least one skill assessment",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores",
+      "source_column": "assessment_type, user_id",
+      "formula": "AVG across sections of (COUNT DISTINCT users where assessment_type='SKILL_ASSESSMENT' / total_students) * 100",
+      "null_handling": "SAFE_DIVIDE used; MOCK variants excluded by filtering assessment_type exactly to 'SKILL_ASSESSMENT'"
+    },
+    {
+      "column": "Skill Assessment Pass %",
+      "description": "Percentage of students who attempted skill assessments and passed (section_evaluation_result = 'PASSED')",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores",
+      "source_column": "assessment_type, section_evaluation_result, user_id",
+      "formula": "AVG across sections of (COUNT DISTINCT users where assessment_type='SKILL_ASSESSMENT' AND section_evaluation_result='PASSED' / COUNT DISTINCT users who attempted skill assessment) * 100",
+      "pass_field": "section_evaluation_result = 'PASSED'",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when no skill assessment attempts"
+    },
+    {
+      "column": "Academic Assessments Pass %",
+      "description": "Percentage of students who attempted graded/academic assessments and passed (section_evaluation_result = 'PASSED')",
+      "type": "metric",
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores",
+      "source_column": "assessment_type, section_evaluation_result, user_id",
+      "formula": "AVG across sections of (COUNT DISTINCT users where assessment_type='GRADED_ASSESSMENT' AND section_evaluation_result='PASSED' / COUNT DISTINCT users who attempted graded assessment) * 100",
+      "pass_field": "section_evaluation_result = 'PASSED'",
+      "null_handling": "SAFE_DIVIDE used; MOCK_GRADED_ASSESSMENT excluded by exact match on 'GRADED_ASSESSMENT'"
+    }
+  ],
+  "source_tables": [
+    {
+      "table_key": "users",
+      "default_name": "niat_and_intensive_offline_users_details",
+      "role": "Roster / enrollment — provides total students per institute+section, plus semester dates",
+      "key_columns": ["user_id", "institute_name", "section_name", "batch_name", "semester_name", "semester_start_date", "semester_end_date", "delivery_mode"]
+    },
+    {
+      "table_key": "progress",
+      "default_name": "curriculum_ops_niat_2025_users_batch_wise_progress_details",
+      "role": "Session delivery counts — actual slots delivered per institute",
+      "key_columns": ["institute_name", "section_name", "batch_name", "semester_name", "sessions_delivered_count", "session_date"]
+    },
+    {
+      "table_key": "portal_courses",
+      "default_name": "curriculum_ops_semester_subject_wise_portal_course_details",
+      "role": "Semester course catalogue — provides subject names (sem_course_title) and total planned slots (net_niat_executional_slots) per subject",
+      "key_columns": ["sem_course_title", "net_niat_executional_slots", "batch_name", "semester_name"],
+      "notes": "Use sem_course_title for subject display names. net_niat_executional_slots = total slots for the full semester."
+    },
+    {
+      "table_key": "session_adherence",
+      "default_name": "curriculum_ops_niat_2025_users_week_wise_session_completion_adherence_details",
+      "role": "Week-wise session adherence — planned vs delivered counts for each session type/name combination",
+      "key_columns": ["institute_name", "section_name", "course_title", "session_type", "session_name_enum", "total_sessions_planned", "total_sessions_delivered", "batch_name", "semester_name"],
+      "notes": "total_sessions_planned and total_sessions_delivered are CUMULATIVE per row. Always MAX() per group before SUM() across groups to avoid double-counting."
+    },
+    {
+      "table_key": "quiz_attempts",
+      "default_name": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
+      "role": "Quiz attempt records — one row per user per quiz, with type and best attempt result",
+      "key_columns": ["institute_name", "section_name", "user_id", "quiz_id", "derived_unit_type", "best_attempt_evaluation_result", "batch_name", "semester_name", "session_date"],
+      "notes": "derived_unit_type values: CLASSROOM_QUIZ (classroom quiz), MODULE_QUIZ / DAILY_QUIZ / COURSE_QUIZ (all treated as module quiz). best_attempt_evaluation_result = 'PASS' or 'FAIL'."
+    },
+    {
+      "table_key": "unlocked_units",
+      "default_name": "curriculum_ops_niat_2025_users_batch_wise_unlocked_units_completion_details",
+      "role": "Unit completion records — tracks whether each user completed each unlocked unit",
+      "key_columns": ["institute_name", "section_name", "user_id", "unit_id", "unit_type", "unit_completion_status", "batch_name", "semester_name", "session_date"],
+      "notes": "unit_type = 'PRACTICE' for practice units. unit_completion_status = 'COMPLETED' for completed units."
+    },
+    {
+      "table_key": "skill_graded",
+      "default_name": "curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores",
+      "role": "Skill and graded assessment scores — tracks participation and pass/fail per assessment",
+      "key_columns": ["institute_name", "section_name", "user_id", "assessment_id", "assessment_type", "section_evaluation_result", "batch_name", "semester_name", "assessment_start_datetime"],
+      "notes": "assessment_type values: 'SKILL_ASSESSMENT' (skill assessments), 'GRADED_ASSESSMENT' (academic/graded assessments). Exclude MOCK variants by exact match. section_evaluation_result = 'PASSED' or 'FAILED'."
+    }
+  ],
+  "quiz_classification": {
+    "column": "derived_unit_type",
+    "classroom_quiz": ["CLASSROOM_QUIZ"],
+    "module_quiz": ["MODULE_QUIZ", "DAILY_QUIZ", "COURSE_QUIZ"],
+    "pass_field": "best_attempt_evaluation_result",
+    "pass_value": "PASS"
+  },
+  "assessment_classification": {
+    "skill_assessment_type": "SKILL_ASSESSMENT",
+    "graded_assessment_type": "GRADED_ASSESSMENT",
+    "pass_field": "section_evaluation_result",
+    "pass_value": "PASSED",
+    "excluded_types": ["MOCK_SKILL_ASSESSMENT", "MOCK_GRADED_ASSESSMENT"]
+  },
+  "deviation_formula": {
+    "description": "Signed deviation percentage. Negative means behind schedule.",
+    "formula": "((Actual Slots Delivered Till Date - Expected Slots Till Date) / Expected Slots Till Date) * 100",
+    "positive_meaning": "Ahead of schedule",
+    "negative_meaning": "Behind schedule",
+    "null_condition": "Expected Slots Till Date = 0 or NULL"
+  },
+  "pacing_formula": {
+    "description": "Pro-rated expected slots to today based on weekday count",
+    "function": "calculate_expected_slots_to_date(start_date, end_date, total_slots)",
+    "formula": "total_slots * (weekdays_from_start_to_today / total_weekdays_in_semester)",
+    "clamped": "today is clamped to min(today, end_date) so value never exceeds total_slots",
+    "weekday_definition": "Monday to Friday (weekday() < 5)"
+  }
+}
