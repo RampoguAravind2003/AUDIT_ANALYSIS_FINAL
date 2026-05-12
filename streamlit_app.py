@@ -1495,36 +1495,33 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
           WHERE TRIM(COALESCE(u.institute_name, '')) != ''
           GROUP BY institute
         ),
-        quiz_base AS (
-          -- One row per (user, quiz); best_attempt_evaluation_result is already the best result
+        quiz_totals AS (
+          -- Aggregate directly at institute level; classroom and module are counted independently.
+          -- Pass condition is inlined to avoid BigQuery boolean-column evaluation quirks.
           SELECT
             q.institute_name AS institute,
-            q.user_id,
-            q.quiz_id,
-            CASE
-              WHEN q.derived_unit_type = 'CLASSROOM_QUIZ'                               THEN 'classroom'
-              WHEN q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')  THEN 'module'
-              ELSE 'other'
-            END AS quiz_category,
-            -- Pass flag: LIKE '%PASS%' covers PASS, PASSED, and any vendor-specific variant
-            (UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%') AS is_pass
+            -- Classroom: attempted = distinct users with classroom quiz; passed = distinct passers
+            COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ', q.user_id, NULL))
+              AS classroom_attempted,
+            COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ'
+              AND UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%',
+              q.user_id, NULL))
+              AS classroom_passed,
+            -- Module: conducted = distinct quiz_ids; attempted/passed = distinct user_ids
+            COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ'),
+              q.quiz_id, NULL))
+              AS module_quiz_conducted,
+            COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ'),
+              q.user_id, NULL))
+              AS module_attempted,
+            COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
+              AND UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%',
+              q.user_id, NULL))
+              AS module_passed
           FROM {refs["quiz_attempts"]} q
           WHERE {' AND '.join(where_clauses)}
             AND q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
-        ),
-        quiz_totals AS (
-          -- Aggregate directly at institute level; classroom and module are counted independently
-          SELECT
-            institute,
-            -- Classroom: attempted = at least one classroom quiz taken; passed = at least one PASS
-            COUNT(DISTINCT IF(quiz_category = 'classroom', user_id, NULL))              AS classroom_attempted,
-            COUNT(DISTINCT IF(quiz_category = 'classroom' AND is_pass, user_id, NULL))  AS classroom_passed,
-            -- Module: conducted = distinct quiz_ids; attempted/passed = distinct user_ids
-            COUNT(DISTINCT IF(quiz_category = 'module', quiz_id, NULL))                 AS module_quiz_conducted,
-            COUNT(DISTINCT IF(quiz_category = 'module', user_id, NULL))                 AS module_attempted,
-            COUNT(DISTINCT IF(quiz_category = 'module' AND is_pass, user_id, NULL))     AS module_passed
-          FROM quiz_base
-          GROUP BY institute
+          GROUP BY q.institute_name
         )
         SELECT
           qt.institute,
@@ -1543,7 +1540,8 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
     """
     try:
         return run_query(sql)
-    except Exception:
+    except Exception as e:
+        st.error(f"fetch_quiz_metrics error: {e}")
         return pd.DataFrame(columns=["institute", "classroom_quiz_attempt_pct", "classroom_quiz_pass_pct",
                                      "module_quiz_conducted", "module_quiz_participation_pct", "module_quiz_pass_pct"])
 
@@ -1724,42 +1722,37 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
           WHERE TRIM(COALESCE(u.institute_name, '')) != ''
           GROUP BY institute
         ),
-        sg_base AS (
+        sg_totals AS (
+          -- Aggregate at institute level; SKILL and GRADED counted separately.
+          -- Pass condition inlined to avoid BigQuery boolean-column evaluation quirks.
           SELECT
             sg.institute_name AS institute,
-            sg.user_id,
-            sg.assessment_id,
-            sg.assessment_type,
-            -- Pass: section_evaluation_result covers all common pass values
-            -- ('PASS', 'PASSED', 'CLEARED', 'ABOVE_CUTOFF', 'ABOVE CUTOFF')
-            -- Fail values ('FAIL', 'FAILED', 'NOT_CLEARED', 'BELOW_CUTOFF') are excluded implicitly.
-            -- Uses LIKE '%PASS%' as a broad net so no schema variation is missed.
-            (UPPER(TRIM(COALESCE(sg.section_evaluation_result, ''))) LIKE '%PASS%') AS is_passed
+            COUNT(DISTINCT IF(sg.assessment_type = 'SKILL_ASSESSMENT',
+              sg.assessment_id, NULL))                                                          AS skill_conducted,
+            COUNT(DISTINCT IF(sg.assessment_type = 'SKILL_ASSESSMENT',
+              sg.user_id, NULL))                                                                AS skill_attempted,
+            COUNT(DISTINCT IF(sg.assessment_type = 'SKILL_ASSESSMENT'
+              AND UPPER(TRIM(COALESCE(sg.section_evaluation_result, ''))) LIKE '%PASS%',
+              sg.user_id, NULL))                                                                AS skill_passed,
+            COUNT(DISTINCT IF(sg.assessment_type = 'GRADED_ASSESSMENT',
+              sg.user_id, NULL))                                                                AS academic_attempted,
+            COUNT(DISTINCT IF(sg.assessment_type = 'GRADED_ASSESSMENT'
+              AND UPPER(TRIM(COALESCE(sg.section_evaluation_result, ''))) LIKE '%PASS%',
+              sg.user_id, NULL))                                                                AS academic_passed
           FROM {refs["skill_graded"]} sg
           WHERE {' AND '.join(where_clauses)}
-        ),
-        sg_totals AS (
-          -- Aggregate at institute level; SKILL_ASSESSMENT and GRADED_ASSESSMENT are counted separately
-          SELECT
-            institute,
-            COUNT(DISTINCT IF(assessment_type = 'SKILL_ASSESSMENT', assessment_id, NULL))             AS skill_conducted,
-            COUNT(DISTINCT IF(assessment_type = 'SKILL_ASSESSMENT', user_id, NULL))                   AS skill_attempted,
-            COUNT(DISTINCT IF(assessment_type = 'SKILL_ASSESSMENT' AND is_passed, user_id, NULL))     AS skill_passed,
-            COUNT(DISTINCT IF(assessment_type = 'GRADED_ASSESSMENT', user_id, NULL))                  AS academic_attempted,
-            COUNT(DISTINCT IF(assessment_type = 'GRADED_ASSESSMENT' AND is_passed, user_id, NULL))    AS academic_passed
-          FROM sg_base
-          GROUP BY institute
+          GROUP BY sg.institute_name
         )
         SELECT
           st.institute,
           st.skill_conducted,
           -- Skill Assessment Participation %: unique users attempted / total enrolled
           ROUND(SAFE_DIVIDE(st.skill_attempted,    NULLIF(ir.total_students,    0)) * 100, 1) AS skill_participation_pct,
-          -- Skill Assessment Pass %: passed / attempted (section_evaluation_result = PASSED)
+          -- Skill Assessment Pass %: passed / attempted (section_evaluation_result LIKE '%PASS%')
           ROUND(SAFE_DIVIDE(st.skill_passed,       NULLIF(st.skill_attempted,   0)) * 100, 1) AS skill_pass_pct,
           -- Academic Assessments Attempt %: unique users attempted / total enrolled
           ROUND(SAFE_DIVIDE(st.academic_attempted, NULLIF(ir.total_students,    0)) * 100, 1) AS academic_attempt_pct,
-          -- Academic Assessments Pass %: passed / attempted (section_evaluation_result = PASSED)
+          -- Academic Assessments Pass %: passed / attempted
           ROUND(SAFE_DIVIDE(st.academic_passed,    NULLIF(st.academic_attempted, 0)) * 100, 1) AS academic_pass_pct
         FROM sg_totals st
         LEFT JOIN institute_roster ir ON ir.institute = st.institute
@@ -1767,7 +1760,8 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
     """
     try:
         return run_query(sql)
-    except Exception:
+    except Exception as e:
+        st.error(f"fetch_skill_graded_metrics error: {e}")
         return pd.DataFrame(columns=["institute", "skill_conducted", "skill_participation_pct",
                                      "skill_pass_pct", "academic_attempt_pct", "academic_pass_pct"])
 
