@@ -327,12 +327,15 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
         ],
         "Mathematics": [
             "mathematics",
+            "mathematics 1",
+            "math for computer science",
             "mathematics for computer science",
+            "mathematics for computing",
+            "mathematics for data science",
+            "mathematics for data science i",
             "engineering mathematics 1",
             "discrete mathematics",
             "linear algebra and optimization",
-            "mathematics for computing",
-            "mathematics for data science i",
             "logical mathematics for software engineers i",
             "calculus and differential equations",
         ],
@@ -362,8 +365,10 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
         "Computer Programming": [
             "programming foundations",
             "programing foundation",
+            "c programming",
             "python programming",
             "problem solving with python programming",
+            "problem solving using python programming",
             "computer programming",
             "introduction to niat",
             "niat practice page",
@@ -383,8 +388,10 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
         "Numerical Ability": [
             "quantitative aptitude",
             "numerical aptitude",
+            "quantitative skills",
         ],
         "Physics": [
+            "applied physics",
             "applied physics for data science",
             "applied physics for data science lab",
             "fundamentals of quantum computing",
@@ -394,6 +401,7 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
         ],
         "Basic Electronics": [
             "basic electronics",
+            "basic electronics for cse",
         ],
         "Foreign Language": [
             "foreign language 1",
@@ -439,18 +447,25 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "front end full stack development laboratory",
             "frontend development 2",
             "frontend development advanced",
-            "build your own dynamic web application",
             "js essentials",
             "javascript essentials",
             "js programming",
             "introduction to react js",
             "react js",
-            "js essentials",
-            "introduction to react js",
+            "node js",
+            "nodejs",
+            "node.js",
+            "node js mongodb",
+            "backend node js",
+            "backend development node js",
+            "back end development node js",
+            "back end development node js mongodb",
         ],
         "Database Management Systems": [
             "database management systems",
+            "database management system",
             "database management systems laboratory",
+            "database systems",
             "introduction to database",
             "introduction to databases",
             "introduction to database management systems",
@@ -458,14 +473,22 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "introduction to dbms",
             "dbms fundamentals",
             "mongodb",
+            "sql",
+            "sql basics",
+            "sql fundamentals",
+            "structured query language",
+            "mysql",
+            "sql programming",
         ],
         "Data Structures": [
             "data structures",
+            "data structure",
             "data structures laboratory",
             "data structures and algorithm",
             "data structures and algorithms",
             "data structures and algorithms laboratory",
             "data structures using c++",
+            "data structures using c",
             "problem solving techniques with c++",
             "datastructures and ai",
             "datastructures and ai laboratory",
@@ -486,12 +509,22 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
         ],
         "Advanced Communicative English": [
             "english advanced",
+            "english advance",
             "advanced communicative english",
             "advanced technical english",
             "communicative english advanced",
             "technical communication for engineers",
             "aec 2",
             "english b1 level learner program",
+            "communication english advanced",
+            "english course",
+            "english",
+            "communicative english",
+            "english language",
+            "english communication",
+            "advanced english",
+            "advanced communication english",
+            "advanced communicative english foundation",
         ],
         "Building LLM Applications": [
             "large language models",
@@ -507,6 +540,7 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "engineering physics laboratory",
             "modern physics",
             "quantum physics",
+            "fundamentals of quantum computing",
             "fqc",
         ],
         "Chemistry": [
@@ -523,6 +557,7 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
         ],
         "Mathematics": [
             "engineering mathematics 2",
+            "mathematics 2",
             "linear algebra and calculus",
             "mathematics for problem solving",
             "logical mathematics for software engineers ii",
@@ -548,11 +583,14 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "foreign language 2",
             "foreign language -2",
             "foreign language",
+            "foreign language ii french",
+            "foreign language ii",
             "language elective",
             "la e",
         ],
         "Engineering Drawing": [
             "engineering drawing",
+            "engineering drawing design drafting",
             "computer aided engineering graphics",
             "caeg",
             "design drafting",
@@ -567,7 +605,6 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
         ],
         "Backend Development": [
             "back end development",
-            "back end development node js mongodb",
         ],
         "Command Line Interfaces and Scripting": [
             "command line interfaces and scripting",
@@ -1002,7 +1039,7 @@ def build_university_overview_rows(
             # ── Skill Assessment ──────────────────────────────────────────────
             "Skill Assessment Conduction %":    round(v, 1) if (v := _get(delivery_data, name, "skill_conduction_pct")) is not None else None,
             "Skill Assessment Student Participation %": round(v, 1) if (v := _get(skill_graded_data, name, "skill_participation_pct")) is not None else None,
-            "Skill Assessment Pass %":      round(v, 1) if (v := _get(skill_graded_data, name, "skill_pass_pct")) is not None else None,
+            "Skill Assessment Pass %":      round(item["avgSkillScore"] * 100, 1) if item.get("avgSkillScore") is not None else None,
             # ── Academic Assessments ──────────────────────────────────────────
             "Academic Assessments Attempt %": round(v, 1) if (v := _get(skill_graded_data, name, "academic_attempt_pct")) is not None else None,
             "Academic Assessments Pass %":    round(v, 1) if (v := _get(skill_graded_data, name, "academic_pass_pct")) is not None else None,
@@ -1095,6 +1132,7 @@ def queue_course_breakdown_navigation(university_name: str):
 def queue_overview_navigation():
     st.session_state["pending_selected_section_label"] = "All Sections"
     st.session_state["pending_current_view"] = "University Overview"
+    st.session_state.pop("selected_course_for_detail", None)
 
 
 
@@ -1107,6 +1145,8 @@ def apply_pending_navigation_state(active_universities, available_sections):
     pending_section = st.session_state.pop("pending_selected_section_label", None)
     pending_view = st.session_state.pop("pending_current_view", None)
     if pending_university in active_universities:
+        if pending_university != st.session_state.get("selected_university"):
+            st.session_state.pop("selected_course_for_detail", None)
         st.session_state["selected_university"] = pending_university
     if pending_section in available_sections:
         st.session_state["selected_section_label"] = pending_section
@@ -1246,6 +1286,34 @@ def build_content_subquery(content_table: str) -> str:
         FROM (
           SELECT DISTINCT
             unit_id,
+            NULLIF(TRIM(course_title), '') AS course_title
+          FROM {content_table}
+        )
+        GROUP BY unit_id
+    """
+
+
+def build_content_subquery_with_course_id(content_table: str, course_id_col: str) -> str:
+    """Extended content subquery that also selects portal_course_id for cross-join matching."""
+    return f"""
+        SELECT
+          unit_id,
+          MAX(CAST({bq_column(course_id_col)} AS STRING)) AS portal_course_id,
+          ARRAY_AGG(
+            course_title IGNORE NULLS
+            ORDER BY
+              CASE
+                WHEN LOWER(course_title) IN ('to be delete', 'niat practice page') THEN 1
+                ELSE 0
+              END,
+              LENGTH(course_title),
+              course_title
+            LIMIT 1
+          )[SAFE_OFFSET(0)] AS course_title
+        FROM (
+          SELECT DISTINCT
+            unit_id,
+            {bq_column(course_id_col)},
             NULLIF(TRIM(course_title), '') AS course_title
           FROM {content_table}
         )
@@ -1497,17 +1565,19 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
         ),
         quiz_totals AS (
           -- Aggregate directly at institute level; classroom and module are counted independently.
-          -- Pass condition is inlined to avoid BigQuery boolean-column evaluation quirks.
+          -- Pass condition uses best_attempt_percentage_score >= 80 to avoid
+          -- boolean-column cast issues with best_attempt_evaluation_result and to
+          -- produce genuinely different classroom vs module pass rates.
           SELECT
             q.institute_name AS institute,
-            -- Classroom: attempted = distinct users with classroom quiz; passed = distinct passers
+            -- Classroom: attempted = distinct users with classroom quiz; passed = distinct passers (score ≥ 80)
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ', q.user_id, NULL))
               AS classroom_attempted,
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ'
-              AND UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%',
+              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
               q.user_id, NULL))
               AS classroom_passed,
-            -- Module: conducted = distinct quiz_ids; attempted/passed = distinct user_ids
+            -- Module: conducted = distinct quiz_ids; attempted/passed = distinct user_ids (score ≥ 80)
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ'),
               q.quiz_id, NULL))
               AS module_quiz_conducted,
@@ -1515,7 +1585,7 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
               q.user_id, NULL))
               AS module_attempted,
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
-              AND UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%',
+              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
               q.user_id, NULL))
               AS module_passed
           FROM {refs["quiz_attempts"]} q
@@ -1600,6 +1670,461 @@ def fetch_practice_completion(batch: str, semester: str) -> pd.DataFrame:
         return run_query(sql)
     except Exception:
         return pd.DataFrame(columns=["institute", "practice_completion_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_course_delivery_stats(batch: str, semester: str, institute: str) -> pd.DataFrame:
+    """
+    Returns per-course planned/delivered totals for a single institute.
+    Source: session_adherence table (cumulative rows → MAX per slot → SUM across slots).
+    """
+    refs = get_table_refs()
+    where_clauses = [
+        f"LOWER(TRIM(COALESCE(sa.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "TRIM(COALESCE(sa.course_title, '')) != ''",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "sa.institute_name", "sa.session_date")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(sa.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    sql = f"""
+        WITH slots AS (
+          SELECT
+            sa.course_title AS course,
+            sa.section_name AS section,
+            sa.session_type,
+            sa.session_name_enum,
+            MAX(sa.total_sessions_planned)   AS planned,
+            MAX(sa.total_sessions_delivered) AS delivered
+          FROM {refs["session_adherence"]} sa
+          WHERE {' AND '.join(where_clauses)}
+          GROUP BY course, section, session_type, session_name_enum
+        )
+        SELECT
+          course,
+          SUM(planned)   AS total_planned,
+          SUM(delivered) AS total_delivered,
+          ROUND(SAFE_DIVIDE(SUM(delivered), NULLIF(SUM(planned), 0)) * 100, 1) AS adherence_pct
+        FROM slots
+        GROUP BY course
+        ORDER BY course
+    """
+    try:
+        return run_query(sql)
+    except Exception as e:
+        st.error(f"fetch_course_delivery_stats error: {e}")
+        return pd.DataFrame(columns=["course", "total_planned", "total_delivered", "adherence_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_course_weekly_delivery(batch: str, semester: str, institute: str, course_title) -> pd.DataFrame:
+    """
+    Returns week-by-week planned/delivered/adherence for a single institute+course.
+    course_title may be a str or tuple[str, ...] (multi-title subjects).
+    Derives weekly delta from the cumulative totals in session_adherence.
+    """
+    if isinstance(course_title, str):
+        course_title = (course_title,)
+    titles_in = ", ".join(f"LOWER('{sql_escape(t)}')" for t in course_title)
+    refs = get_table_refs()
+    where_clauses = [
+        f"LOWER(TRIM(COALESCE(sa.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        f"LOWER(TRIM(COALESCE(sa.course_title, ''))) IN ({titles_in})",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "sa.institute_name", "sa.session_date")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(sa.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    sql = f"""
+        WITH cumulative AS (
+          SELECT
+            DATE_TRUNC(sa.session_date, WEEK(MONDAY)) AS week_start,
+            MAX(sa.total_sessions_planned)   AS cum_planned,
+            MAX(sa.total_sessions_delivered) AS cum_delivered
+          FROM {refs["session_adherence"]} sa
+          WHERE {' AND '.join(where_clauses)}
+            AND sa.session_date <= CURRENT_DATE()
+          GROUP BY week_start
+        ),
+        weekly AS (
+          SELECT
+            week_start,
+            cum_planned,
+            cum_delivered,
+            LAG(cum_planned)   OVER (ORDER BY week_start) AS prev_planned,
+            LAG(cum_delivered) OVER (ORDER BY week_start) AS prev_delivered
+          FROM cumulative
+        )
+        SELECT
+          week_start,
+          FORMAT_DATE('%b %d', week_start) AS week_label,
+          COALESCE(cum_planned   - prev_planned,   cum_planned)   AS planned,
+          COALESCE(cum_delivered - prev_delivered, cum_delivered) AS delivered,
+          ROUND(
+            SAFE_DIVIDE(
+              COALESCE(cum_delivered - prev_delivered, cum_delivered),
+              NULLIF(COALESCE(cum_planned - prev_planned, cum_planned), 0)
+            ) * 100, 1
+          ) AS adherence_pct
+        FROM weekly
+        ORDER BY week_start
+    """
+    try:
+        return run_query(sql)
+    except Exception as e:
+        st.error(f"fetch_course_weekly_delivery error: {e}")
+        return pd.DataFrame(columns=["week_start", "week_label", "planned", "delivered", "adherence_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_course_session_units(batch: str, semester: str, institute: str, course_title) -> pd.DataFrame:
+    """
+    Returns per-unit delivery stats using session_adherence.session_name_enum as the unit name.
+    Also enriches PRACTICE units with student-level completion from unlocked_units.
+
+    course_title may be a single str or a tuple[str, ...] of all raw titles that belong
+    to the same subject (e.g. "Communicative English Advanced" + "English B1 Level Learner
+    Program" both map to "Advanced Communicative English").
+
+    session_adherence gives:  unit name (session_name_enum), session_type, planned, delivered
+    unlocked_units gives:     student completion count per unit_id (PRACTICE units)
+    content bridges:          unit_id ↔ course_title for filtering unlocked_units by course
+
+    Columns: unit, session_type, section, total_sessions, delivered_sessions, completion_pct,
+             total_students, students_completed  (NaN for non-PRACTICE types)
+    """
+    if isinstance(course_title, str):
+        course_title = (course_title,)
+    titles_in = ", ".join(f"LOWER('{sql_escape(t)}')" for t in course_title)
+    refs = get_table_refs()
+    sa_where = [
+        f"LOWER(TRIM(COALESCE(sa.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        f"LOWER(TRIM(COALESCE(sa.course_title,    ''))) IN ({titles_in})",
+        "TRIM(COALESCE(sa.session_name_enum, '')) != ''",
+    ]
+    sa_window = get_semester_window_clause(semester, batch, "sa.institute_name", "sa.session_date")
+    if sa_window:
+        sa_where.append(sa_window)
+    if should_apply_batch_filter(batch):
+        sa_where.append(f"LOWER(COALESCE(sa.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    uu_where = [
+        f"LOWER(TRIM(COALESCE(uu.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+    ]
+    uu_window = get_semester_window_clause(semester, batch, "uu.institute_name", "uu.session_date")
+    if uu_window:
+        uu_where.append(uu_window)
+    if should_apply_batch_filter(batch):
+        uu_where.append(f"LOWER(COALESCE(uu.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    sql = f"""
+        WITH
+        -- ── Session delivery (all unit types) from session_adherence ──────────
+        session_units AS (
+          SELECT
+            sa.session_name_enum                                      AS unit,
+            sa.session_type,
+            COALESCE(NULLIF(TRIM(sa.section_name), ''), 'Unknown')   AS section,
+            MAX(sa.total_sessions_planned)                            AS total_sessions,
+            MAX(sa.total_sessions_delivered)                          AS delivered_sessions
+          FROM {refs["session_adherence"]} sa
+          WHERE {' AND '.join(sa_where)}
+          GROUP BY unit, session_type, section
+        ),
+        -- ── Student-level practice completion from unlocked_units ─────────────
+        content AS (
+          {build_content_subquery(refs["content"])}
+        ),
+        roster AS (
+          SELECT
+            u.institute_name,
+            COALESCE(NULLIF(TRIM(u.section_name), ''), 'Unknown') AS section,
+            COUNT(DISTINCT u.user_id) AS total_students
+          FROM {refs["users"]} u
+          WHERE TRIM(COALESCE(u.institute_name, '')) != ''
+          GROUP BY u.institute_name, section
+        ),
+        practice_completion AS (
+          -- Aggregated at section level (not per unit_id) so the JOIN on section
+          -- below produces exactly one matching row per section, avoiding duplicates.
+          SELECT
+            COALESCE(NULLIF(TRIM(uu.section_name), ''), 'Unknown') AS section,
+            MAX(r.total_students)                                   AS total_students,
+            COUNT(DISTINCT CASE WHEN uu.unit_completion_status = 'COMPLETED' THEN uu.user_id END) AS students_completed
+          FROM {refs["unlocked_units"]} uu
+          INNER JOIN content c ON uu.unit_id = c.unit_id
+          LEFT JOIN roster r
+            ON r.institute_name = uu.institute_name
+           AND r.section        = COALESCE(NULLIF(TRIM(uu.section_name), ''), 'Unknown')
+          WHERE {' AND '.join(uu_where)}
+            AND LOWER(TRIM(COALESCE(c.course_title, ''))) IN ({titles_in})
+          GROUP BY section
+        )
+        -- ── Final: delivery stats joined with student completion where available
+        SELECT
+          su.unit,
+          su.session_type,
+          su.section,
+          su.total_sessions,
+          su.delivered_sessions,
+          ROUND(SAFE_DIVIDE(su.delivered_sessions, NULLIF(su.total_sessions, 0)) * 100, 1) AS completion_pct,
+          r.total_students,
+          -- students_completed only meaningful for PRACTICE (from unlocked_units)
+          CASE WHEN su.session_type = 'PRACTICE' THEN pc.students_completed ELSE NULL END AS students_completed
+        FROM session_units su
+        LEFT JOIN roster r
+          ON LOWER(TRIM(r.institute_name)) = LOWER('{sql_escape(institute)}')
+         AND r.section                     = su.section
+        LEFT JOIN practice_completion pc
+          ON pc.section = su.section
+        ORDER BY su.session_type, su.unit
+    """
+    try:
+        return run_query(sql)
+    except Exception as e:
+        st.error(f"fetch_course_session_units error: {e}")
+        return pd.DataFrame(columns=["unit", "session_type", "section", "total_sessions", "delivered_sessions", "completion_pct", "total_students", "students_completed"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str) -> pd.DataFrame:
+    """
+    Returns per-course quiz pass rates for all courses at a given institute.
+    When portal_course_id exists in the content table, also returns portal_course_id
+    so the caller can match via ID when titles don't align.
+
+    Columns: course_title, portal_course_id (optional), attempted, passed, pass_pct
+    """
+    refs = get_table_refs()
+    where_clauses = [
+        f"LOWER(TRIM(COALESCE(q.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "q.institute_name", "q.session_date")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(q.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    # Detect portal_course_id in content table for richer grouping
+    content_table_ref = get_config("BQ_CONTENT_TABLE", DEFAULT_CONTENT_TABLE)
+    content_cols      = fetch_table_columns(content_table_ref, DEFAULT_CONTENT_TABLE)
+    content_cid_col   = first_existing_column(content_cols, ["portal_course_id", "course_id"])
+
+    if content_cid_col:
+        content_cte = build_content_subquery_with_course_id(refs["content"], content_cid_col)
+        extra_select = "MAX(c.portal_course_id) AS portal_course_id,"
+    else:
+        content_cte = build_content_subquery(refs["content"])
+        extra_select = "CAST(NULL AS STRING) AS portal_course_id,"
+
+    sql = f"""
+        WITH
+        content AS (
+          {content_cte}
+        )
+        SELECT
+          c.course_title,
+          {extra_select}
+          COUNT(DISTINCT q.user_id)                                         AS attempted,
+          COUNT(DISTINCT CASE WHEN UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%'
+                              THEN q.user_id END)                           AS passed,
+          ROUND(SAFE_DIVIDE(
+            COUNT(DISTINCT CASE WHEN UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%'
+                                THEN q.user_id END),
+            NULLIF(COUNT(DISTINCT q.user_id), 0)
+          ) * 100, 1)                                                       AS pass_pct
+        FROM {refs["quiz_attempts"]} q
+        INNER JOIN content c ON CAST(q.quiz_id AS STRING) = c.unit_id
+        WHERE {' AND '.join(where_clauses)}
+          AND TRIM(COALESCE(c.course_title, '')) != ''
+        GROUP BY c.course_title
+        ORDER BY c.course_title
+    """
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame(columns=["course_title", "portal_course_id", "attempted", "passed", "pass_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_course_quiz_breakdown(batch: str, semester: str, institute: str, course_title: str, display_course_title: str = "") -> pd.DataFrame:
+    """
+    Returns per-quiz stats for a specific institute+course.
+
+    Matching strategy (most → least specific):
+      1. content.course_title = course_title  (session_adherence title)
+      2. content.course_title = display_course_title  (sem_course_title / display name)
+      3. content.portal_course_id IN (portal_courses where sem_course_title matches)
+         — only when portal_course_id column exists in both tables
+
+    Columns: quiz_id, quiz_name, quiz_type, section, attempted, passed, failed, pass_pct, total_students
+    """
+    refs = get_table_refs()
+    where_clauses = [
+        f"LOWER(TRIM(COALESCE(q.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "q.institute_name", "q.session_date")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(q.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    # Schedule where for quiz name lookup (institute + date window)
+    sched_where = [f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')"]
+    sched_window = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
+    if sched_window:
+        sched_where.append(sched_window)
+    if should_apply_batch_filter(batch):
+        sched_where.append(f"LOWER(COALESCE(s.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    # ── Detect portal_course_id columns for fallback matching ─────────────────
+    content_table_ref = get_config("BQ_CONTENT_TABLE", DEFAULT_CONTENT_TABLE)
+    content_cols      = fetch_table_columns(content_table_ref, DEFAULT_CONTENT_TABLE)
+    content_cid_col   = first_existing_column(content_cols, ["portal_course_id", "course_id"])
+
+    portal_table_ref  = get_config("BQ_PORTAL_COURSES_TABLE", DEFAULT_PORTAL_COURSES_TABLE)
+    portal_cols       = fetch_table_columns(portal_table_ref, DEFAULT_PORTAL_COURSES_TABLE)
+    portal_cid_col    = first_existing_column(portal_cols, ["portal_course_id", "course_id"])
+
+    use_portal_fallback = bool(content_cid_col and portal_cid_col)
+
+    # Build the content CTE and course filter expression
+    if use_portal_fallback:
+        content_cte = build_content_subquery_with_course_id(refs["content"], content_cid_col)
+        # Which titles to look up in portal_courses
+        portal_title_conditions = []
+        for t in {course_title, display_course_title}:
+            if t and t.strip():
+                portal_title_conditions.append(
+                    f"LOWER(TRIM(COALESCE(pc.sem_course_title, ''))) = LOWER('{sql_escape(t.strip())}')"
+                )
+        portal_title_where = " OR ".join(portal_title_conditions) if portal_title_conditions else "FALSE"
+        portal_batch_filter = ""
+        if should_apply_batch_filter(batch):
+            portal_batch_filter = f"AND LOWER(COALESCE(pc.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'"
+
+        portal_ids_cte = f"""
+        portal_course_ids AS (
+          SELECT DISTINCT CAST(pc.{bq_column(portal_cid_col)} AS STRING) AS pc_id
+          FROM {refs["portal_courses"]} pc
+          WHERE ({portal_title_where})
+            AND TRIM(COALESCE(CAST(pc.{bq_column(portal_cid_col)} AS STRING), '')) != ''
+            {portal_batch_filter}
+        ),"""
+
+        # Match by any of: raw course_title, display_course_title, or portal_course_id
+        title_conditions = [f"LOWER(TRIM(COALESCE(c.course_title, ''))) = LOWER('{sql_escape(course_title)}')"]
+        if display_course_title and display_course_title.strip() and display_course_title.strip().lower() != course_title.strip().lower():
+            title_conditions.append(f"LOWER(TRIM(COALESCE(c.course_title, ''))) = LOWER('{sql_escape(display_course_title.strip())}')")
+        title_conditions.append("c.portal_course_id IN (SELECT pc_id FROM portal_course_ids)")
+        course_filter = "(" + "\n              OR ".join(title_conditions) + ")"
+    else:
+        content_cte = build_content_subquery(refs["content"])
+        portal_ids_cte = ""
+        title_conditions = [f"LOWER(TRIM(COALESCE(c.course_title, ''))) = LOWER('{sql_escape(course_title)}')"]
+        if display_course_title and display_course_title.strip() and display_course_title.strip().lower() != course_title.strip().lower():
+            title_conditions.append(f"LOWER(TRIM(COALESCE(c.course_title, ''))) = LOWER('{sql_escape(display_course_title.strip())}')")
+        course_filter = "(" + " OR ".join(title_conditions) + ")"
+
+    sql = f"""
+        WITH
+        {portal_ids_cte}
+        -- ── Quiz names: schedule.resource_id → session_name ─────────────────
+        quiz_names AS (
+          SELECT
+            CAST(s.resource_id AS STRING) AS quiz_id,
+            ARRAY_AGG(
+              NULLIF(TRIM(s.session_name), '')
+              IGNORE NULLS ORDER BY LENGTH(s.session_name) LIMIT 1
+            )[SAFE_OFFSET(0)] AS quiz_name
+          FROM {refs["schedule"]} s
+          WHERE {' AND '.join(sched_where)}
+            AND s.resource_id IS NOT NULL
+            AND TRIM(COALESCE(s.session_name, '')) != ''
+          GROUP BY CAST(s.resource_id AS STRING)
+        ),
+        -- ── Course filter: content.unit_id → course_title / portal_course_id ─
+        content AS (
+          {content_cte}
+        ),
+        -- ── Roster: students per section ──────────────────────────────────────
+        roster AS (
+          SELECT
+            u.institute_name,
+            COALESCE(NULLIF(TRIM(u.section_name), ''), 'Unknown') AS section,
+            COUNT(DISTINCT u.user_id) AS total_students
+          FROM {refs["users"]} u
+          WHERE TRIM(COALESCE(u.institute_name, '')) != ''
+          GROUP BY u.institute_name, section
+        ),
+        -- ── Quiz attempts filtered to this course ─────────────────────────────
+        -- Use LEFT JOIN so module/daily/course quizzes that have no entry in the
+        -- content hierarchy table are not silently dropped.
+        -- Matching logic (any one must be true):
+        --   1. content row found AND content matches the course filter
+        --   2. no content row (c.unit_id IS NULL) but quiz_id is scheduled for this
+        --      institute/date window and is a non-classroom type
+        quiz_filtered AS (
+          SELECT
+            CAST(q.quiz_id AS STRING)                                AS quiz_id,
+            q.derived_unit_type                                      AS quiz_type,
+            COALESCE(NULLIF(TRIM(q.section_name), ''), 'Unknown')   AS section,
+            q.user_id,
+            q.best_attempt_evaluation_result,
+            SAFE_CAST(q.best_attempt_number AS FLOAT64)              AS best_attempt_number,
+            SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64)    AS best_attempt_score
+          FROM {refs["quiz_attempts"]} q
+          LEFT JOIN content c ON CAST(q.quiz_id AS STRING) = c.unit_id
+          WHERE {' AND '.join(where_clauses)}
+            AND (
+              -- Primary: quiz found in content and course matches
+              (c.unit_id IS NOT NULL AND {course_filter})
+              OR
+              -- Fallback: quiz not in content (module/daily/course quiz) but
+              -- is in the schedule for this institute + date window
+              (c.unit_id IS NULL
+               AND q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
+               AND CAST(q.quiz_id AS STRING) IN (SELECT quiz_id FROM quiz_names))
+            )
+        )
+        SELECT
+          qf.quiz_id,
+          COALESCE(
+            MAX(qn.quiz_name),
+            qf.quiz_id
+          )                                                          AS quiz_name,
+          qf.quiz_type,
+          qf.section,
+          COUNT(DISTINCT qf.user_id)                                 AS attempted,
+          COUNT(DISTINCT CASE WHEN UPPER(TRIM(COALESCE(qf.best_attempt_evaluation_result,''))) LIKE '%PASS%'
+                              THEN qf.user_id END)                   AS passed,
+          COUNT(DISTINCT CASE WHEN UPPER(TRIM(COALESCE(qf.best_attempt_evaluation_result,''))) NOT LIKE '%PASS%'
+                              THEN qf.user_id END)                   AS failed,
+          ROUND(SAFE_DIVIDE(
+            COUNT(DISTINCT CASE WHEN UPPER(TRIM(COALESCE(qf.best_attempt_evaluation_result,''))) LIKE '%PASS%'
+                                THEN qf.user_id END),
+            NULLIF(COUNT(DISTINCT qf.user_id), 0)
+          ) * 100, 1)                                                AS pass_pct,
+          MAX(r.total_students)                                      AS total_students,
+          AVG(qf.best_attempt_number)                                AS avg_best_attempt_number,
+          AVG(qf.best_attempt_score)                                 AS avg_best_attempt_score
+        FROM quiz_filtered qf
+        LEFT JOIN quiz_names qn ON qn.quiz_id = qf.quiz_id
+        LEFT JOIN roster r
+          ON r.institute_name = '{sql_escape(institute)}'
+         AND r.section        = qf.section
+        GROUP BY qf.quiz_id, qf.quiz_type, qf.section
+        ORDER BY qf.quiz_type, MAX(COALESCE(qn.quiz_name, qf.quiz_id))
+    """
+    try:
+        return run_query(sql)
+    except Exception as e:
+        st.error(f"fetch_course_quiz_breakdown error: {e}")
+        return pd.DataFrame(columns=["quiz_id", "quiz_name", "quiz_type", "section", "attempted", "passed", "failed", "pass_pct", "total_students", "avg_best_attempt_number", "avg_best_attempt_score"])
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -1826,36 +2351,161 @@ def fetch_pass_field_values(batch: str, semester: str) -> dict:
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_sem_course_titles(batch: str, semester: str) -> dict:
     """
-    Returns {normalized_name → sem_course_title} from portal_courses for the given
-    batch/semester.  Used to map content-level course titles to the official semester
-    subject names in the Course Breakdown table.
+    Returns {normalized_key → sem_course_title} by joining content → portal_courses
+    via portal_course_id so that content-level course titles map to the official
+    semester subject names.
+
+    Keys added per row (so any lookup form hits the right sem_course_title):
+      • normalize_text(content.course_title)
+      • normalize_text(normalize_course_name(content.course_title, semester))
+      • normalize_text(sem_course_title)          ← direct match fallback
     """
     refs = get_table_refs()
-    where_clauses = ["TRIM(COALESCE(pc.sem_course_title, '')) != ''"]
+
+    # Detect portal_course_id column in content and portal_courses tables
+    content_table_ref = get_config("BQ_CONTENT_TABLE", DEFAULT_CONTENT_TABLE)
+    portal_table_ref  = get_config("BQ_PORTAL_COURSES_TABLE", DEFAULT_PORTAL_COURSES_TABLE)
+    content_cols = fetch_table_columns(content_table_ref, DEFAULT_CONTENT_TABLE)
+    portal_cols  = fetch_table_columns(portal_table_ref,  DEFAULT_PORTAL_COURSES_TABLE)
+    content_cid_col = first_existing_column(content_cols, ["portal_course_id", "course_id"])
+    portal_cid_col  = first_existing_column(portal_cols,  ["portal_course_id", "course_id"])
+    # The portal_courses table uses "semester_title" (not "semester_name")
+    portal_sem_col  = first_existing_column(portal_cols,  ["semester_title", "semester_name", "semester"])
+
+    portal_where = ["TRIM(COALESCE(pc.sem_course_title, '')) != ''"]
     if should_apply_batch_filter(batch):
-        where_clauses.append(f"LOWER(COALESCE(pc.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+        portal_where.append(f"LOWER(COALESCE(pc.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
     sem_num = ""
     if "1" in semester:
         sem_num = "1"
     elif "2" in semester:
         sem_num = "2"
-    if sem_num:
-        where_clauses.append(f"LOWER(COALESCE(pc.semester_name, '')) LIKE '%semester {sem_num}%'")
-    sql = f"""
-        SELECT DISTINCT TRIM(pc.sem_course_title) AS sem_course_title
-        FROM {refs["portal_courses"]} pc
-        WHERE {' AND '.join(where_clauses)}
-        ORDER BY sem_course_title
+    if sem_num and portal_sem_col:
+        portal_where.append(f"LOWER(COALESCE(pc.{bq_column(portal_sem_col)}, '')) LIKE '%semester {sem_num}%'")
+
+    result: dict[str, str] = {}
+
+    # ── Primary path: join content → portal_courses via portal_course_id ─────
+    if content_cid_col and portal_cid_col:
+        sql = f"""
+            SELECT DISTINCT
+              TRIM(COALESCE(c.course_title, ''))            AS content_course_title,
+              TRIM(pc.sem_course_title)                     AS sem_course_title,
+              CAST(pc.{bq_column(portal_cid_col)} AS STRING) AS portal_course_id
+            FROM {refs["content"]} c
+            INNER JOIN {refs["portal_courses"]} pc
+              ON CAST(c.{bq_column(content_cid_col)} AS STRING)
+               = CAST(pc.{bq_column(portal_cid_col)} AS STRING)
+            WHERE {' AND '.join(portal_where)}
+              AND TRIM(COALESCE(c.course_title, '')) != ''
+              AND TRIM(COALESCE(CAST(c.{bq_column(content_cid_col)} AS STRING), '')) != ''
+        """
+        try:
+            df = run_query(sql)
+            for _, row in df.iterrows():
+                ct  = str(row.get("content_course_title") or "").strip()
+                st_ = str(row.get("sem_course_title")     or "").strip()
+                if not ct or not st_:
+                    continue
+                # key by raw content title
+                result[normalize_text(ct)] = st_
+                # key by alias-normalized content title (what _display_course receives)
+                result[normalize_text(normalize_course_name(ct, semester))] = st_
+                # key by sem_course_title itself (direct lookup fallback)
+                result[normalize_text(st_)] = st_
+        except Exception:
+            pass
+
+    # ── Fallback path: sem_course_title → sem_course_title (if join fails) ──
+    if not result:
+        sql_fb = f"""
+            SELECT DISTINCT TRIM(pc.sem_course_title) AS sem_course_title
+            FROM {refs["portal_courses"]} pc
+            WHERE {' AND '.join(portal_where)}
+            ORDER BY sem_course_title
+        """
+        try:
+            df_fb = run_query(sql_fb)
+            for title in df_fb["sem_course_title"].dropna().unique():
+                title = str(title).strip()
+                if title:
+                    result[normalize_text(title)] = title
+        except Exception:
+            pass
+
+    return result
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_portal_course_id_map(batch: str, semester: str) -> dict:
     """
+    Returns two-way lookup dict for quiz pass fallback matching:
+      {normalize_text(sem_course_title) → portal_course_id}
+      {normalize_text(content_course_title) → portal_course_id}   (if join possible)
+
+    Used when quiz data can't be found by title — match via portal_course_id instead.
+    """
+    refs = get_table_refs()
+    portal_table_ref  = get_config("BQ_PORTAL_COURSES_TABLE", DEFAULT_PORTAL_COURSES_TABLE)
+    content_table_ref = get_config("BQ_CONTENT_TABLE", DEFAULT_CONTENT_TABLE)
+    portal_cols  = fetch_table_columns(portal_table_ref,  DEFAULT_PORTAL_COURSES_TABLE)
+    content_cols = fetch_table_columns(content_table_ref, DEFAULT_CONTENT_TABLE)
+    portal_cid_col  = first_existing_column(portal_cols,  ["portal_course_id", "course_id"])
+    content_cid_col = first_existing_column(content_cols, ["portal_course_id", "course_id"])
+    portal_sem_col  = first_existing_column(portal_cols,  ["semester_title", "semester_name", "semester"])
+    if not portal_cid_col:
+        return {}
+
+    portal_where = [
+        "TRIM(COALESCE(pc.sem_course_title, '')) != ''",
+        f"TRIM(COALESCE(CAST(pc.{bq_column(portal_cid_col)} AS STRING), '')) != ''",
+    ]
+    if should_apply_batch_filter(batch):
+        portal_where.append(f"LOWER(COALESCE(pc.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    sem_num = ""
+    if "1" in semester:
+        sem_num = "1"
+    elif "2" in semester:
+        sem_num = "2"
+    if sem_num and portal_sem_col:
+        portal_where.append(f"LOWER(COALESCE(pc.{bq_column(portal_sem_col)}, '')) LIKE '%semester {sem_num}%'")
+
+    result: dict[str, str] = {}
+
+    # Include content course titles if the join is possible
+    if content_cid_col:
+        sql = f"""
+            SELECT DISTINCT
+              TRIM(pc.sem_course_title)                       AS sem_course_title,
+              CAST(pc.{bq_column(portal_cid_col)} AS STRING) AS portal_course_id,
+              TRIM(COALESCE(c.course_title, ''))              AS content_course_title
+            FROM {refs["portal_courses"]} pc
+            LEFT JOIN {refs["content"]} c
+              ON CAST(c.{bq_column(content_cid_col)} AS STRING)
+               = CAST(pc.{bq_column(portal_cid_col)} AS STRING)
+            WHERE {' AND '.join(portal_where)}
+        """
+    else:
+        sql = f"""
+            SELECT DISTINCT
+              TRIM(pc.sem_course_title)                       AS sem_course_title,
+              CAST(pc.{bq_column(portal_cid_col)} AS STRING) AS portal_course_id,
+              CAST(NULL AS STRING)                            AS content_course_title
+            FROM {refs["portal_courses"]} pc
+            WHERE {' AND '.join(portal_where)}
+        """
     try:
         df = run_query(sql)
-        if df.empty:
-            return {}
-        result = {}
-        for title in df["sem_course_title"].dropna().unique():
-            title = str(title).strip()
-            if title:
-                result[normalize_text(title)] = title
+        for _, row in df.iterrows():
+            st_ = str(row.get("sem_course_title")      or "").strip()
+            pid = str(row.get("portal_course_id")       or "").strip()
+            ct  = str(row.get("content_course_title")   or "").strip()
+            if not pid:
+                continue
+            if st_:
+                result[normalize_text(st_)] = pid
+            if ct:
+                result[normalize_text(ct)] = pid
         return result
     except Exception:
         return {}
@@ -2274,7 +2924,7 @@ def get_roster_size_for_scope(data_df: pd.DataFrame, section: str):
     return float(scoped.groupby("section")["students"].max().sum())
 
 
-def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame, institute: str, section: str, semester: str, sem_course_titles: dict | None = None):
+def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame, institute: str, section: str, semester: str, sem_course_titles: dict | None = None, quiz_pass_pct: float | None = None):
     filtered = data_df[data_df["institute"] == institute].copy()
     if section:
         filtered = filtered[filtered["section"] == section]
@@ -2321,6 +2971,7 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
                 "Skill Participation #": round(skill_assessment_row["participation"], 1) if skill_assessment_row["participation"] is not None else None,
                 "Academic Assessment Score %": round(graded_assessment_row["score"] * 100, 1) if graded_assessment_row["score"] is not None else None,
                 "Academic Assessment Participation #": round(graded_assessment_row["participation"], 1) if graded_assessment_row["participation"] is not None else None,
+                "Classroom Quiz Pass %": round(quiz_pass_pct, 1) if quiz_pass_pct is not None else None,
             }
         )
 
@@ -2385,6 +3036,817 @@ def build_last_updated_label(*frames: pd.DataFrame) -> str:
     if not timestamps:
         return "Not available"
     return max(timestamps).strftime("%d %b %Y")
+
+
+def _pct_class(value, green_threshold=75, orange_threshold=50):
+    """Returns CSS class name based on percentage value."""
+    if value is None:
+        return "pct-orange"
+    if value >= green_threshold:
+        return "pct-green"
+    if value >= orange_threshold:
+        return "pct-orange"
+    return "pct-red"
+
+
+def _bar_class(value, green_threshold=75, orange_threshold=50):
+    if value is None:
+        return "bar-orange"
+    if value >= green_threshold:
+        return "bar-green"
+    if value >= orange_threshold:
+        return "bar-orange"
+    return "bar-red"
+
+
+def render_course_matrix(course_rows: list[dict], selected_course: str | None) -> str | None:
+    """
+    Renders the course matrix as styled HTML card rows.
+    Each row has a Streamlit button (›) to open course detail.
+    Returns the clicked course name or None.
+    """
+    st.markdown("<div class='course-matrix-header'>Course Matrix</div>", unsafe_allow_html=True)
+    st.markdown("<div class='course-matrix-sub'>adherence vs. content engagement</div>", unsafe_allow_html=True)
+
+    # ── Course selector at top for quick navigation ────────────────────────────
+    course_names = [r["course"] for r in course_rows]
+    sel = st.selectbox(
+        "Jump to course:",
+        options=course_names,
+        index=None,
+        placeholder="Select a course to open detail view…",
+        key="cm_course_select",
+    )
+    if sel:
+        return sel
+
+    def _safe(v):
+        try:
+            return None if (v is None or pd.isna(v)) else float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _pct_html(val, bar_color="var(--bar-color, #0f172a)"):
+        if val is None:
+            return '<span style="color:#94a3b8">—</span>', ""
+        cls = _pct_class(val)
+        bar_w = min(int(val), 100)
+        bar_cls = _bar_class(val)
+        return (
+            f'<span class="cm-pct-val {cls}">{val:.1f}%</span>',
+            f'<div class="cm-bar-track"><div class="cm-bar-fill {bar_cls}" style="width:{bar_w}%"></div></div>',
+        )
+
+    # Build entire table HTML in one block (avoids inter-element Streamlit spacing)
+    rows_html = ""
+    for i, row in enumerate(course_rows):
+        adh      = _safe(row.get("adherence_pct"))
+        comp     = _safe(row.get("completion_pct"))
+        quiz     = _safe(row.get("quiz_pass_pct"))
+        skill    = _safe(row.get("skill_pct"))
+        lec_sl   = _safe(row.get("lecture_slots"))
+        prac_sl  = _safe(row.get("practice_slots"))
+        exam_sl  = _safe(row.get("exam_slots"))
+        tot_sl   = _safe(row.get("total_slots"))
+        lec_pct  = _safe(row.get("lecture_pct"))
+        prac_pct = _safe(row.get("practice_pct"))
+        exam_pct = _safe(row.get("exam_pct"))
+        course = escape_html(row.get("course", ""))
+        num    = f"{i+1:02d}"
+
+        def _td_pct(val):
+            if val is None:
+                return '<td style="padding:12px 10px;width:130px"><span style="color:#94a3b8">—</span></td>'
+            cls  = _pct_class(val)
+            bcls = _bar_class(val)
+            bw   = min(int(val), 100)
+            return (
+                f'<td style="padding:12px 10px;width:130px">'
+                f'<span class="{cls}" style="font-weight:700;font-size:0.91rem">{val:.1f}%</span>'
+                f'<div style="height:4px;background:#e2e8f0;border-radius:999px;margin-top:4px;overflow:hidden">'
+                f'<div class="{bcls}" style="height:4px;border-radius:999px;width:{bw}%"></div></div>'
+                f'</td>'
+            )
+
+        def _td_simple(val):
+            if val is None:
+                return '<td style="padding:12px 10px;width:80px"><span style="color:#94a3b8">—</span></td>'
+            cls = _pct_class(val)
+            return f'<td style="padding:12px 10px;width:80px"><span class="{cls}" style="font-weight:700">{val:.1f}%</span></td>'
+
+        def _td_slot(val):
+            if val is None:
+                return '<td style="padding:12px 10px;width:70px;text-align:right"><span style="color:#94a3b8">—</span></td>'
+            display = int(val) if val == int(val) else f"{val:.1f}"
+            return f'<td style="padding:12px 10px;width:70px;text-align:right;font-weight:600;color:#334155">{display}</td>'
+
+        rows_html += (
+            f'<tr style="border-bottom:1px solid #f1f5f9">'
+            f'<td style="padding:12px 6px 12px 16px;color:#94a3b8;font-size:0.82rem;width:36px">{num}</td>'
+            f'<td style="padding:12px 10px;font-weight:600;color:#0f172a">{course}</td>'
+            + _td_slot(lec_sl)
+            + _td_slot(prac_sl)
+            + _td_slot(exam_sl)
+            + _td_slot(tot_sl)
+            + _td_simple(lec_pct)
+            + _td_simple(prac_pct)
+            + _td_simple(exam_pct)
+            + _td_pct(adh)
+            + _td_pct(comp)
+            + _td_simple(quiz)
+            + _td_simple(skill)
+            + f'</tr>'
+        )
+
+    table_html = (
+        '<div style="overflow-x:auto;width:100%">'
+        '<table style="width:100%;min-width:900px;border-collapse:collapse;background:#fff;'
+        'border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.07);font-size:0.92rem">'
+        '<thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">'
+        '<th style="padding:11px 6px 11px 16px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">#</th>'
+        '<th style="padding:11px 10px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Course</th>'
+        '<th style="padding:11px 10px;text-align:right;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Lec Slots</th>'
+        '<th style="padding:11px 10px;text-align:right;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Prac Slots</th>'
+        '<th style="padding:11px 10px;text-align:right;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Exam Slots</th>'
+        '<th style="padding:11px 10px;text-align:right;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Total Slots</th>'
+        '<th style="padding:11px 10px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Lecture %</th>'
+        '<th style="padding:11px 10px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Practice %</th>'
+        '<th style="padding:11px 10px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Exam %</th>'
+        '<th style="padding:11px 10px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Adherence</th>'
+        '<th style="padding:11px 10px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Completion</th>'
+        '<th style="padding:11px 10px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Quiz Pass</th>'
+        '<th style="padding:11px 10px;text-align:left;font-size:0.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Skill %</th>'
+        f'</tr></thead><tbody>{rows_html}</tbody></table></div>'
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    return None
+
+
+def render_course_detail_header(course_name: str, delivery_row: dict | None, units_df: pd.DataFrame, quiz_pass_pct: float | None):
+    """Renders the course title, subtitle, and stats bar."""
+    delivered_total = int(delivery_row["total_delivered"]) if delivery_row and delivery_row.get("total_delivered") is not None else "—"
+    planned_total   = int(delivery_row["total_planned"])   if delivery_row and delivery_row.get("total_planned")   is not None else "—"
+    adherence_pct   = delivery_row["adherence_pct"]        if delivery_row else None
+
+    # Unit counts from units_df (fetch_course_session_units)
+    # Each unit appears once per section — deduplicate by unit name for totals
+    if units_df is not None and not units_df.empty and "session_type" in units_df.columns:
+        udf = units_df.copy()
+        udf["_stype"] = udf["session_type"].str.upper()
+        # Total distinct unit names per type
+        lec_total  = udf[udf["_stype"] == "LECTURE"]["unit"].nunique()
+        prac_total = udf[udf["_stype"] == "PRACTICE"]["unit"].nunique()
+        exam_total = udf[udf["_stype"].isin(["EXAM", "QUIZ"])]["unit"].nunique()
+        # Delivered: units where delivered_sessions > 0 in at least one section
+        if "delivered_sessions" in udf.columns:
+            delivered_mask = udf["delivered_sessions"].fillna(0) > 0
+            lec_done  = udf[(udf["_stype"] == "LECTURE")  & delivered_mask]["unit"].nunique()
+            prac_done = udf[(udf["_stype"] == "PRACTICE") & delivered_mask]["unit"].nunique()
+            exam_done = udf[udf["_stype"].isin(["EXAM", "QUIZ"]) & delivered_mask]["unit"].nunique()
+        else:
+            lec_done = prac_done = exam_done = 0
+    else:
+        lec_total = prac_total = exam_total = 0
+        lec_done  = prac_done = exam_done  = 0
+
+    def _unit_stat(done: int, total: int) -> tuple[str, str]:
+        """Returns (value_str, sub_str) for a unit stat cell."""
+        if total == 0:
+            return "—", "no units"
+        return f"{done}/{total}", "delivered"
+
+    lec_val,  lec_sub  = _unit_stat(lec_done,  lec_total)
+    prac_val, prac_sub = _unit_stat(prac_done, prac_total)
+    exam_val, exam_sub = _unit_stat(exam_done, exam_total)
+
+    quiz_accent = "accent-orange" if quiz_pass_pct is not None and quiz_pass_pct < 75 else "accent-green"
+    quiz_display = f"{quiz_pass_pct:.1f}" if quiz_pass_pct is not None else "—"
+    adh_sub = f"{adherence_pct:.1f}% adherence" if adherence_pct is not None else ""
+
+    st.markdown(
+        f"""
+        <div class='cd-header-wrap'>
+          <span class='cd-title'>{escape_html(course_name)}</span>
+        </div>
+        <div class='cd-subtitle'>{escape_html(str(delivered_total))}/{escape_html(str(planned_total))} sessions delivered</div>
+        <div class='cd-stats-bar'>
+          <div class='cd-stat-item'>
+            <div class='cd-stat-label'>Sessions Planned</div>
+            <div class='cd-stat-value'>{escape_html(str(planned_total))}</div>
+          </div>
+          <div class='cd-stat-item'>
+            <div class='cd-stat-label'>Sessions Delivered</div>
+            <div class='cd-stat-value'>{escape_html(str(delivered_total))}</div>
+            <div class='cd-stat-sub'>{escape_html(adh_sub)}</div>
+          </div>
+          <div class='cd-stat-item'>
+            <div class='cd-stat-label'>Lecture Units</div>
+            <div class='cd-stat-value'>{escape_html(lec_val)}</div>
+            <div class='cd-stat-sub'>{escape_html(lec_sub)}</div>
+          </div>
+          <div class='cd-stat-item'>
+            <div class='cd-stat-label'>Practice Units</div>
+            <div class='cd-stat-value'>{escape_html(prac_val)}</div>
+            <div class='cd-stat-sub'>{escape_html(prac_sub)}</div>
+          </div>
+          <div class='cd-stat-item'>
+            <div class='cd-stat-label'>Exam Units</div>
+            <div class='cd-stat-value'>{escape_html(exam_val)}</div>
+            <div class='cd-stat-sub'>{escape_html(exam_sub)}</div>
+          </div>
+          <div class='cd-stat-item'>
+            <div class='cd-stat-label'>Quiz Pass Rate</div>
+            <div class='cd-stat-value {quiz_accent}'>{escape_html(quiz_display)}<span style='font-size:1rem;font-weight:500'> %</span></div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_tab_schedule_adherence(weekly_df: pd.DataFrame):
+    """Renders week-wise delivery bar chart and adherence trend."""
+    if weekly_df.empty:
+        st.info("No week-wise delivery data available for this course.")
+        return
+    weekly_df = weekly_df.copy()
+    weekly_df["week_label"] = weekly_df.get("week_label", weekly_df.get("week_start", range(len(weekly_df))).astype(str))
+
+    col1, col2 = st.columns([1.6, 1], gap="medium")
+    with col1:
+        st.markdown("**Week-wise delivery**")
+        chart_df = weekly_df.set_index("week_label")[["planned", "delivered"]].rename(
+            columns={"planned": "Planned", "delivered": "Delivered"}
+        )
+        st.bar_chart(chart_df, color=["#cbd5e1", "#0d9488"], use_container_width=True)
+    with col2:
+        st.markdown("**Adherence trend**")
+        if "adherence_pct" in weekly_df.columns:
+            trend_df = weekly_df.set_index("week_label")[["adherence_pct"]].rename(
+                columns={"adherence_pct": "Adherence %"}
+            )
+            st.line_chart(trend_df, color=["#0d9488"], use_container_width=True)
+        else:
+            st.info("Adherence trend not available.")
+
+
+def render_tab_lecture_practice_exam(units_df: pd.DataFrame, sections: list[str]):
+    """
+    Renders unit-by-unit completion as card rows (Image #10 style).
+    Section filter uses pill buttons top-right.
+    When 'All' is selected, student counts are summed across sections.
+    """
+    if units_df.empty:
+        st.info("No unit-level data available for this course.")
+        return
+
+    all_sections = sorted(units_df["section"].unique().tolist()) if "section" in units_df.columns else []
+    section_options = ["All"] + all_sections
+
+    # ── Section filter pill state ───────────────────────────────────────────────
+    if "lpe_sec" not in st.session_state or st.session_state["lpe_sec"] not in section_options:
+        st.session_state["lpe_sec"] = "All"
+    cur_sec = st.session_state["lpe_sec"]
+
+    # Compute total students for subtitle
+    has_students = "total_students" in units_df.columns
+    if has_students and cur_sec == "All":
+        # Sum across sections: one row per (unit, section) → sum for all units in All view
+        sec_students = units_df.groupby("section")["total_students"].max().sum()
+        total_students_display = int(sec_students) if sec_students and not pd.isna(sec_students) else None
+    elif has_students and cur_sec != "All":
+        sec_df = units_df[units_df["section"] == cur_sec]
+        ts_val = sec_df["total_students"].max() if not sec_df.empty else None
+        total_students_display = int(ts_val) if ts_val and not pd.isna(ts_val) else None
+    else:
+        total_students_display = None
+
+    # ── Header row: title left, section pills right ─────────────────────────────
+    hcol_left, hcol_right = st.columns([2, 3])
+    with hcol_left:
+        sec_label = "All Sections" if cur_sec == "All" else cur_sec
+        stu_label = f" · {total_students_display} students" if total_students_display else ""
+        st.markdown(
+            f"<div style='font-weight:700;font-size:1.05rem;margin-bottom:2px'>Unit-by-unit completion</div>"
+            f"<div style='font-size:0.84rem;color:#64748b'>{escape_html(sec_label + stu_label)}</div>",
+            unsafe_allow_html=True,
+        )
+    with hcol_right:
+        pill_cols = st.columns(len(section_options))
+        for j, sec in enumerate(section_options):
+            with pill_cols[j]:
+                is_active = (sec == cur_sec)
+                btn_style = (
+                    "background:#0f172a;color:#fff;border:1px solid #0f172a;" if is_active
+                    else "background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;"
+                )
+                st.markdown(
+                    f"<style>div[data-testid='stButton'] #pill_{j}_{sec} button"
+                    f"{{border-radius:999px;padding:4px 12px;font-size:0.82rem;font-weight:600;"
+                    f"min-height:30px;{btn_style}}}</style>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(sec, key=f"lpe_pill_{sec}_{j}", use_container_width=True):
+                    st.session_state["lpe_sec"] = sec
+                    st.rerun()
+
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+    # ── Filter / aggregate ──────────────────────────────────────────────────────
+    filtered = units_df if cur_sec == "All" else units_df[units_df["section"] == cur_sec]
+
+    if cur_sec == "All":
+        agg_cols = {
+            "total_sessions":     ("total_sessions",     "max"),   # curriculum-level, same across sections
+            "delivered_sessions": ("delivered_sessions", "max"),
+        }
+        if "students_completed" in filtered.columns:
+            agg_cols["students_completed"] = ("students_completed", "sum")   # sum across sections
+        if "total_students" in filtered.columns:
+            agg_cols["total_students"] = ("total_students", "sum")           # sum across sections
+        filtered = filtered.groupby(["unit", "session_type"], as_index=False).agg(**agg_cols)
+        filtered["completion_pct"] = (
+            filtered["delivered_sessions"] / filtered["total_sessions"].replace(0, float("nan")) * 100
+        ).round(1)
+        # Fix: when All sections is selected, every row's denominator should be
+        # the total university enrollment — not just the sections that happen to
+        # have that unit in the session_adherence table.
+        if total_students_display and "total_students" in filtered.columns:
+            filtered["total_students"] = total_students_display
+
+    type_order = {"LECTURE": 0, "PRACTICE": 1, "EXAM": 2, "QUIZ": 3}
+    filtered = filtered.copy()
+    filtered["_sort"] = filtered["session_type"].map(lambda t: type_order.get(str(t).upper(), 9))
+    filtered = filtered.sort_values(["_sort", "unit"]).reset_index(drop=True)
+
+    has_students = "students_completed" in filtered.columns and "total_students" in filtered.columns
+
+    # Badge inline styles (avoids class nesting issues in Streamlit markdown)
+    badge_style_map = {
+        "LECTURE":  ("background:#f1f5f9;color:#475569",  "LECTURE"),
+        "PRACTICE": ("background:#ccfbf1;color:#065f46",  "PRACTICE"),
+        "EXAM":     ("background:#fee2e2;color:#991b1b",  "EXAM"),
+        "QUIZ":     ("background:#fef9c3;color:#854d0e",  "QUIZ"),
+    }
+
+    # ── Build rows using <table> so Streamlit renders reliably ─────────────────
+    rows_html = ""
+    for i, row in filtered.iterrows():
+        num       = f"{i+1:02d}"
+        unit_name = escape_html(str(row.get("unit", "")))
+        stype     = str(row.get("session_type", "")).upper()
+        bstyle, blbl = badge_style_map.get(stype, ("background:#f1f5f9;color:#475569", stype))
+
+        pct = row.get("completion_pct")
+        try:
+            pct = None if (pct is None or pd.isna(pct)) else float(pct)
+        except (TypeError, ValueError):
+            pct = None
+        pct_cls = _pct_class(pct)
+        bar_cls = _bar_class(pct)
+        bar_w   = min(int(pct or 0), 100)
+        pct_str = f"{pct:.1f}%" if pct is not None else "—"
+
+        # Student counts
+        sc = row.get("students_completed") if has_students else None
+        tot = row.get("total_students") if has_students else None
+        try:
+            sc  = None if (sc  is None or pd.isna(sc))  else int(sc)
+            tot = None if (tot is None or pd.isna(tot)) else int(tot)
+        except (TypeError, ValueError):
+            sc = tot = None
+
+        if sc is not None and tot is not None:
+            if cur_sec != "All":
+                pending = max(0, tot - sc)
+                pending_html = f' <span style="color:#ef4444;font-size:0.79rem">&middot; {pending} pending</span>' if pending > 0 else ""
+            else:
+                pending_html = ""
+            stu_html = f'<b style="color:#0f172a">{sc}</b> <span style="color:#94a3b8">of {tot}</span>{pending_html}'
+        elif tot is not None:
+            stu_html = f'<span style="color:#64748b">{tot} students</span>'
+        else:
+            stu_html = '<span style="color:#94a3b8">—</span>'
+
+        rows_html += f"""<tr>
+          <td style="color:#94a3b8;font-size:0.82rem;padding:12px 6px 12px 16px;width:36px">{num}</td>
+          <td style="font-weight:600;color:#0f172a;padding:12px 8px">{unit_name}</td>
+          <td style="padding:12px 8px;width:100px"><span style="display:inline-block;padding:3px 10px;border-radius:6px;font-size:0.74rem;font-weight:700;{bstyle}">{blbl}</span></td>
+          <td style="padding:12px 8px;font-size:0.85rem;white-space:nowrap;width:200px">{stu_html}</td>
+          <td style="padding:12px 8px;font-weight:700;font-size:0.93rem;width:70px"><span class="{pct_cls}">{escape_html(pct_str)}</span></td>
+          <td style="padding:12px 16px 12px 8px;width:130px">
+            <div style="height:4px;background:#e2e8f0;border-radius:999px;width:110px;overflow:hidden">
+              <div class="{bar_cls}" style="height:4px;border-radius:999px;width:{bar_w}%"></div>
+            </div>
+          </td>
+        </tr>"""
+
+    table_html = f"""<div style="overflow-x:auto;width:100%">
+    <table style="width:100%;min-width:550px;border-collapse:collapse;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(15,23,42,0.06);font-size:0.9rem">
+      <thead>
+        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
+          <th style="padding:10px 6px 10px 16px;text-align:left;font-size:0.76rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">#</th>
+          <th style="padding:10px 8px;text-align:left;font-size:0.76rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Unit</th>
+          <th style="padding:10px 8px;text-align:left;font-size:0.76rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Type</th>
+          <th style="padding:10px 8px;text-align:left;font-size:0.76rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Students</th>
+          <th style="padding:10px 8px;text-align:left;font-size:0.76rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">% Rate</th>
+          <th style="padding:10px 16px 10px 8px;text-align:left;font-size:0.76rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Progress</th>
+        </tr>
+      </thead>
+      <tbody>{rows_html}</tbody>
+    </table></div>"""
+    st.markdown(table_html, unsafe_allow_html=True)
+
+
+def render_tab_quizzes(quiz_df: pd.DataFrame, quiz_metrics: dict, course_name: str, sections: list[str]):
+    """Renders the quiz attempt funnel and per-quiz card rows (Image #13 style)."""
+    # ── Section filter pills ───────────────────────────────────────────────────
+    all_secs = sorted(quiz_df["section"].unique().tolist()) if not quiz_df.empty and "section" in quiz_df.columns else []
+    section_options = ["All"] + all_secs
+
+    if "quiz_sec" not in st.session_state or st.session_state["quiz_sec"] not in section_options:
+        st.session_state["quiz_sec"] = "All"
+    sel_sec = st.session_state["quiz_sec"]
+
+    # Pills row
+    pill_cols = st.columns(len(section_options))
+    for j, sec in enumerate(section_options):
+        with pill_cols[j]:
+            is_active = (sec == sel_sec)
+            if st.button(
+                sec,
+                key=f"qz_pill_{sec}_{j}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+            ):
+                st.session_state["quiz_sec"] = sec
+                st.rerun()
+
+    # ── Quiz type filter ───────────────────────────────────────────────────────
+    _TYPE_LABELS = {
+        "All Types":      None,
+        "Classroom Quiz": "CLASSROOM_QUIZ",
+        "Module Quiz":    "MODULE_QUIZ",
+        "Course Quiz":    "COURSE_QUIZ",
+        "Daily Quiz":     "DAILY_QUIZ",
+    }
+    # Only show types that actually exist in the data
+    if not quiz_df.empty and "quiz_type" in quiz_df.columns:
+        present_types = set(quiz_df["quiz_type"].dropna().str.upper().unique())
+        _type_options = ["All Types"] + [
+            label for label, val in _TYPE_LABELS.items()
+            if val is not None and val in present_types
+        ]
+    else:
+        _type_options = ["All Types"]
+
+    if "quiz_type_filter" not in st.session_state or st.session_state["quiz_type_filter"] not in _type_options:
+        st.session_state["quiz_type_filter"] = "All Types"
+
+    type_filter_col, _ = st.columns([0.35, 0.65])
+    with type_filter_col:
+        sel_type_label = st.selectbox(
+            "Quiz type",
+            options=_type_options,
+            key="quiz_type_filter",
+            label_visibility="collapsed",
+        )
+    sel_type_val = _TYPE_LABELS.get(sel_type_label)
+
+    scoped = quiz_df if quiz_df.empty or sel_sec == "All" else quiz_df[quiz_df["section"] == sel_sec]
+    if sel_type_val is not None and not scoped.empty and "quiz_type" in scoped.columns:
+        scoped = scoped[scoped["quiz_type"].str.upper() == sel_type_val]
+
+    # ── Funnel summary ─────────────────────────────────────────────────────────
+    if not scoped.empty:
+        # total_students: sum of per-section max to avoid double-counting
+        if "total_students" in scoped.columns and "section" in scoped.columns:
+            total_students = int(scoped.groupby("section")["total_students"].max().sum() or 0)
+        elif "total_students" in scoped.columns:
+            total_students = int(scoped["total_students"].max() or 0)
+        else:
+            total_students = 0
+        total_attempted = int(scoped.groupby("quiz_id")["attempted"].max().sum())
+        total_passed    = int(scoped.groupby("quiz_id")["passed"].max().sum())
+        total_failed    = int(scoped.groupby("quiz_id")["failed"].max().sum())
+        not_attempted   = max(0, total_students - total_attempted) if total_students else None
+        quiz_count      = scoped["quiz_id"].nunique()
+        # Avg best attempt score
+        avg_score: float | None = None
+        if "avg_best_attempt_score" in scoped.columns:
+            v = scoped["avg_best_attempt_score"].mean()
+            try:
+                avg_score = None if pd.isna(v) else round(float(v), 1)
+            except (TypeError, ValueError):
+                avg_score = None
+        pass_of_enrolled_pct = round(total_passed / total_students * 100, 1) if total_students else None
+    else:
+        total_students = total_attempted = total_passed = total_failed = quiz_count = 0
+        not_attempted = avg_score = pass_of_enrolled_pct = None
+
+    drop_off_pct = (
+        round(not_attempted / total_students * 100, 1)
+        if not_attempted is not None and total_students
+        else None
+    )
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    col1, col2 = st.columns([1.3, 1], gap="medium")
+    with col1:
+        not_att_str  = f"{not_attempted:,}" if not_attempted is not None else "—"
+        drop_str     = f"<div style='font-size:0.8rem;color:#94a3b8'>{drop_off_pct:.1f}% drop-off</div>" if drop_off_pct is not None else ""
+        enrolled_str = f"{total_students:,}" if total_students else "—"
+        st.markdown(
+            f"""
+            <div style='background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:22px 24px;margin-bottom:12px'>
+              <div style='font-weight:700;font-size:1rem;margin-bottom:4px'>Quiz attempt funnel</div>
+              <div style='font-size:0.82rem;color:#64748b;margin-bottom:16px'>{escape_html(course_name)} · {'All sections' if sel_sec == 'All' else escape_html(sel_sec)} · {escape_html(sel_type_label)}</div>
+              <div class='quiz-funnel-grid'>
+                <div class='quiz-funnel-item'>
+                  <div class='quiz-funnel-label'>Enrolled Students</div>
+                  <div class='quiz-funnel-value'>{enrolled_str}</div>
+                </div>
+                <div class='quiz-funnel-item'>
+                  <div class='quiz-funnel-label'>Not Attempted</div>
+                  <div class='quiz-funnel-value red'>{not_att_str}</div>
+                  {drop_str}
+                </div>
+                <div class='quiz-funnel-item'>
+                  <div class='quiz-funnel-label'>Quizzes Passed</div>
+                  <div class='quiz-funnel-value green'>{total_passed:,}</div>
+                </div>
+                <div class='quiz-funnel-item'>
+                  <div class='quiz-funnel-label'>Quizzes Failed</div>
+                  <div class='quiz-funnel-value orange'>{total_failed:,}</div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col2:
+        score_str = f"{avg_score:.1f}" if avg_score is not None else "—"
+        badge_html = (
+            f"<div style='display:inline-block;background:#d1fae5;color:#065f46;border-radius:999px;"
+            f"padding:5px 14px;font-size:0.84rem;font-weight:600;margin-top:12px'>"
+            f"{pass_of_enrolled_pct:.1f}% of enrolled passed</div>"
+            if pass_of_enrolled_pct is not None else ""
+        )
+        st.markdown(
+            f"""
+            <div style='background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:22px 24px;text-align:center;margin-bottom:12px'>
+              <div style='font-weight:700;font-size:0.9rem;color:#64748b;margin-bottom:8px'>Avg Best Attempt</div>
+              <div style='font-size:3.2rem;font-weight:800;color:#0d9488;line-height:1'>
+                {escape_html(score_str)}<span style='font-size:1.3rem'>%</span>
+              </div>
+              <div style='font-size:0.82rem;color:#94a3b8;margin-top:6px'>across {total_attempted:,} attempts</div>
+              {badge_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if scoped.empty:
+        st.info("No quiz data found for this course.")
+        return
+
+    # ── Aggregate for display ──────────────────────────────────────────────────
+    if sel_sec == "All":
+        agg_kwargs: dict = dict(
+            attempted=("attempted", "sum"),
+            passed=("passed", "sum"),
+            failed=("failed", "sum"),
+            total_students=("total_students", "max"),
+        )
+        if "avg_best_attempt_number" in scoped.columns:
+            agg_kwargs["avg_best_attempt_number"] = ("avg_best_attempt_number", "mean")
+        if "avg_best_attempt_score" in scoped.columns:
+            agg_kwargs["avg_best_attempt_score"] = ("avg_best_attempt_score", "mean")
+        agg = scoped.groupby(["quiz_id", "quiz_name", "quiz_type"], as_index=False).agg(**agg_kwargs)
+        agg["pass_pct"] = (agg["passed"] / agg["attempted"].replace(0, float("nan")) * 100).round(1)
+    else:
+        agg = scoped.copy()
+
+    agg = agg.sort_values(["quiz_type", "quiz_name"]).reset_index(drop=True)
+
+    # Type badge inline styles
+    type_badge_style = {
+        "CLASSROOM_QUIZ": ("background:#fef3c7;color:#92400e", "CLASSROOM_QUIZ"),
+        "MODULE_QUIZ":    ("background:#dbeafe;color:#1e40af", "MODULE_QUIZ"),
+        "DAILY_QUIZ":     ("background:#d1fae5;color:#065f46", "DAILY_QUIZ"),
+        "COURSE_QUIZ":    ("background:#ede9fe;color:#5b21b6", "COURSE_QUIZ"),
+    }
+
+    has_score   = "avg_best_attempt_score"  in agg.columns
+    has_att_num = "avg_best_attempt_number" in agg.columns
+    has_topic   = "topic_title" in agg.columns
+    has_quiz_no = "quiz_no"     in agg.columns
+
+    type_suffix = f" · {escape_html(sel_type_label)}" if sel_type_label != "All Types" else ""
+    st.markdown(
+        f"<div style='font-weight:700;font-size:1rem;margin:14px 0 4px'>"
+        f"{escape_html(course_name)} &middot; {quiz_count} quizzes</div>"
+        f"<div style='font-size:0.82rem;color:#64748b;margin-bottom:10px'>"
+        f"{'all sections' if sel_sec == 'All' else escape_html(sel_sec)}{type_suffix}</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Build table rows ───────────────────────────────────────────────────────
+    rows_html = ""
+    for idx, row in agg.iterrows():
+        qname  = escape_html(str(row.get("quiz_name", row.get("quiz_id", ""))))
+        qtype  = str(row.get("quiz_type", "")).upper()
+        bstyle, blbl = type_badge_style.get(qtype, ("background:#f1f5f9;color:#475569", qtype))
+        att = int(row.get("attempted", 0) or 0)
+        pas = int(row.get("passed",    0) or 0)
+        pct = row.get("pass_pct")
+        try:
+            pct = None if (pct is None or pd.isna(pct)) else float(pct)
+        except (TypeError, ValueError):
+            pct = None
+        pct_str = f"{pct:.1f}%" if pct is not None else "—"
+        pct_cls = _pct_class(pct)
+
+        def _num_cell(col_name, fmt=None, color="#334155"):
+            v = row.get(col_name)
+            try:
+                v = None if (v is None or pd.isna(v)) else float(v)
+            except (TypeError, ValueError):
+                v = None
+            s = (fmt.format(v) if fmt and v is not None else (f"{v:.1f}" if v is not None else "—"))
+            return f'<td style="padding:11px 10px;color:{color};font-size:0.87rem">{s}</td>'
+
+        topic_cells = ""
+        if has_topic:
+            tt = escape_html(str(row.get("topic_title") or "—"))
+            topic_cells = f'<td style="padding:11px 10px;color:#64748b;font-size:0.85rem">{tt}</td>'
+
+        quiz_no_cell = ""
+        if has_quiz_no:
+            qno = row.get("quiz_no")
+            qno_str = str(int(qno)) if qno is not None and not pd.isna(qno) else "—"
+            quiz_no_cell = f'<td style="padding:11px 10px;color:#94a3b8;font-size:0.82rem;text-align:center">{qno_str}</td>'
+
+        att_num_cell = _num_cell("avg_best_attempt_number") if has_att_num else ""
+        score_cell   = _num_cell("avg_best_attempt_score", fmt="{:.1f}%", color="#0d9488") if has_score else ""
+
+        rows_html += (
+            f'<tr style="border-bottom:1px solid #f1f5f9">'
+            f'<td style="padding:11px 6px 11px 16px;color:#94a3b8;font-size:0.8rem;width:32px">{idx+1:02d}</td>'
+            + topic_cells
+            + quiz_no_cell
+            + f'<td style="padding:11px 10px;font-weight:600;color:#0f172a">{qname}</td>'
+            f'<td style="padding:11px 10px"><span style="display:inline-block;padding:3px 9px;border-radius:6px;font-size:0.73rem;font-weight:700;{bstyle}">{blbl}</span></td>'
+            f'<td style="padding:11px 10px;color:#334155;font-size:0.87rem">{att:,}</td>'
+            f'<td style="padding:11px 10px;font-weight:600;color:#16a34a;font-size:0.87rem">{pas:,}</td>'
+            + att_num_cell
+            + score_cell
+            + f'<td style="padding:11px 10px;font-weight:700"><span class="{pct_cls}">{pct_str}</span></td>'
+            f'<td style="padding:11px 10px 11px 4px;color:#cbd5e1;text-align:right">›</td>'
+            f'</tr>'
+        )
+
+    topic_th   = '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;text-align:left">Topic</th>' if has_topic else ""
+    quiz_no_th = '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;text-align:center">Q#</th>' if has_quiz_no else ""
+    att_num_th = '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Avg Attempts</th>' if has_att_num else ""
+    score_th   = '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Avg Score</th>' if has_score else ""
+
+    th_base = (
+        '<th style="padding:10px 6px 10px 16px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">#</th>'
+        + topic_th + quiz_no_th
+        + '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Quiz Title</th>'
+        '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Type</th>'
+        '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Attempted</th>'
+        '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Passed</th>'
+        + att_num_th + score_th
+        + '<th style="padding:10px 10px;color:#94a3b8;font-size:0.76rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Pass %</th>'
+        '<th style="padding:10px 10px;width:20px"></th>'
+    )
+
+    table_html = (
+        '<div style="overflow-x:auto">'
+        '<table style="width:100%;min-width:700px;border-collapse:collapse;background:#fff;'
+        'border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(15,23,42,0.05);font-size:0.9rem">'
+        f'<thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">{th_base}</tr></thead>'
+        f'<tbody>{rows_html}</tbody></table></div>'
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
+
+
+def render_tab_assessments(assessment_df: pd.DataFrame, course_name: str, sections: list[str]):
+    """Renders assessment list and section-level performance for a course."""
+    if assessment_df.empty:
+        st.info("No assessment data available for this course.")
+        return
+
+    # Assessment summary table
+    st.markdown("**Skill & Graded Assessments**")
+    summary_rows = (
+        assessment_df.groupby(["assessment_type"], as_index=False)
+        .agg(
+            assessed_sections=("section", "nunique"),
+            avg_participation=("avg_participation", "mean"),
+            avg_score=("avg_score", "mean"),
+        )
+    )
+    for _, row in summary_rows.iterrows():
+        atype = row["assessment_type"]
+        badge_cls = "badge-practice" if "Skill" in atype else "badge-exam"
+        st.markdown(
+            f"<span class='unit-type-badge {badge_cls}' style='margin-right:8px'>{escape_html(atype)}</span>"
+            f"Avg participation: <strong>{row['avg_participation']:.0f}</strong> &nbsp;|&nbsp; "
+            f"Avg score: <strong>{row['avg_score']*100:.1f}%</strong>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    # Per-section, per-assessment-type breakdown
+    st.markdown("**Section-level breakdown**")
+    assessment_filter_options = ["All", "Skill only", "Graded only"]
+    af_col, _ = st.columns([1, 2])
+    with af_col:
+        afilter = st.radio("Assessment filter", assessment_filter_options, horizontal=True, key="cd_assessment_filter", label_visibility="collapsed")
+
+    scoped = assessment_df.copy()
+    if afilter == "Skill only":
+        scoped = scoped[scoped["assessment_type"] == "Skill Assessment"]
+    elif afilter == "Graded only":
+        scoped = scoped[scoped["assessment_type"] != "Skill Assessment"]
+
+    if scoped.empty:
+        st.info("No assessments match the selected filter.")
+        return
+
+    section_summary = (
+        scoped.groupby("section", as_index=False)
+        .agg(
+            skill_avg=("avg_score", lambda x: x[scoped.loc[x.index, "assessment_type"] == "Skill Assessment"].mean() if (scoped.loc[x.index, "assessment_type"] == "Skill Assessment").any() else None),
+            graded_avg=("avg_score", lambda x: x[scoped.loc[x.index, "assessment_type"] != "Skill Assessment"].mean() if (scoped.loc[x.index, "assessment_type"] != "Skill Assessment").any() else None),
+            overall_avg=("avg_score", "mean"),
+            students=("avg_participation", "mean"),
+        )
+    )
+
+    rows_html = ""
+    for i, row in section_summary.iterrows():
+        def fmt(v): return f"{v*100:.1f}%" if v is not None and not pd.isna(v) else "—"
+        overall_val = row["overall_avg"] * 100 if row["overall_avg"] is not None and not pd.isna(row["overall_avg"]) else None
+        bar_w = min(int(overall_val or 0), 100)
+        bar_cls = _bar_class(overall_val)
+        rows_html += f"""
+        <tr>
+          <td class="cm-row-num">{i+1:02d}</td>
+          <td><span style='background:#f1f5f9;border-radius:6px;padding:2px 8px;font-weight:600;font-size:0.85rem'>{escape_html(str(row['section']))}</span></td>
+          <td>{fmt(row['skill_avg'])}</td>
+          <td>{fmt(row['graded_avg'])}</td>
+          <td><span class="cm-pct-val {_pct_class(overall_val)}">{fmt(row['overall_avg'])}</span></td>
+          <td><div class="cm-bar-track" style="width:120px"><div class="cm-bar-fill {bar_cls}" style="width:{bar_w}%"></div></div></td>
+        </tr>"""
+
+    st.markdown(
+        f"""<table class="unit-table">
+          <thead><tr><th>#</th><th>Section</th><th>Skill Avg</th><th>Graded Avg</th><th>Overall %</th><th>Performance</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>""",
+        unsafe_allow_html=True,
+    )
+
+
+def render_tab_sections(semester_course_df: pd.DataFrame):
+    """Renders per-section delivery breakdown for the selected course."""
+    if semester_course_df.empty:
+        st.info("No section data available.")
+        return
+    section_agg = (
+        semester_course_df.groupby("section", as_index=False)
+        .agg(sessions=("sessions", "sum"), completion=("completion", "mean"), students=("students", "first"))
+        .sort_values("completion", ascending=False)
+        .reset_index(drop=True)
+    )
+    rows_html = ""
+    for i, row in section_agg.iterrows():
+        pct = row.get("completion")
+        bar_w = min(int(pct or 0), 100)
+        bar_cls = _bar_class(pct)
+        pct_str = f"{pct:.1f}%" if pct is not None else "—"
+        rows_html += f"""
+        <tr>
+          <td class="cm-row-num">{i+1:02d}</td>
+          <td><span style='background:#f1f5f9;border-radius:6px;padding:2px 8px;font-weight:600;font-size:0.85rem'>{escape_html(str(row['section']))}</span></td>
+          <td>{int(row.get('students', 0))}</td>
+          <td>{int(row.get('sessions', 0))}</td>
+          <td><span class="cm-pct-val {_pct_class(pct)}">{pct_str}</span></td>
+          <td><div class="cm-bar-track" style="width:120px"><div class="cm-bar-fill {bar_cls}" style="width:{bar_w}%"></div></div></td>
+        </tr>"""
+    st.markdown(
+        f"""<table class="unit-table">
+          <thead><tr><th>#</th><th>Section</th><th>Students</th><th>Sessions</th><th>Delivery %</th><th>Progress</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>""",
+        unsafe_allow_html=True,
+    )
 
 
 def inject_custom_css():
@@ -2563,6 +4025,382 @@ def inject_custom_css():
                 margin-bottom: 12px;
                 overflow-wrap: anywhere;
             }
+            /* ── Course Matrix ─────────────────────────── */
+            .course-matrix-header {
+                font-size: 1.15rem;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 2px;
+            }
+            .course-matrix-sub {
+                font-size: 0.88rem;
+                color: #64748b;
+                margin-bottom: 14px;
+            }
+            /* New card-row matrix */
+            .cm-card-container {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 4px 24px rgba(15,23,42,0.07);
+                font-size: 0.92rem;
+            }
+            .cm-card-header {
+                display: flex;
+                align-items: center;
+                padding: 10px 16px;
+                background: #f8fafc;
+                border-bottom: 1px solid #e2e8f0;
+                font-size: 0.78rem;
+                font-weight: 600;
+                color: #94a3b8;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            .cm-card-row {
+                display: flex;
+                align-items: center;
+                padding: 13px 16px;
+                border-bottom: 1px solid #f1f5f9;
+                transition: background 0.12s;
+            }
+            .cm-card-row:last-child { border-bottom: none; }
+            .cm-card-row:hover { background: #f8fafc; }
+            /* Shared column widths for header and rows */
+            .cm-th-num   { width: 36px;  min-width: 36px; }
+            .cm-th-course{ flex: 1;      padding-right: 16px; }
+            .cm-th-adh   { width: 140px; min-width: 110px; }
+            .cm-th-comp  { width: 140px; min-width: 110px; }
+            .cm-th-quiz  { width: 90px;  min-width: 80px; }
+            .cm-th-skill { width: 80px;  min-width: 70px; }
+            .cm-th-arrow { width: 24px;  min-width: 24px; text-align: right; }
+            .cm-table {
+                width: 100%;
+                border-collapse: collapse;
+                background: #ffffff;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 4px 24px rgba(15,23,42,0.07);
+                font-size: 0.92rem;
+            }
+            .cm-table thead tr {
+                background: #f8fafc;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            .cm-table thead th {
+                padding: 11px 14px;
+                font-weight: 600;
+                color: #64748b;
+                font-size: 0.82rem;
+                text-align: left;
+                white-space: nowrap;
+            }
+            .cm-table thead th.right { text-align: right; }
+            .cm-table tbody tr {
+                border-bottom: 1px solid #f1f5f9;
+                transition: background 0.15s;
+            }
+            .cm-table tbody tr:last-child { border-bottom: none; }
+            .cm-table tbody tr:hover { background: #f8fafc; }
+            .cm-table td {
+                padding: 13px 14px;
+                vertical-align: middle;
+            }
+            .cm-row-num {
+                color: #94a3b8;
+                font-size: 0.82rem;
+                font-weight: 500;
+                min-width: 28px;
+            }
+            .cm-course-name {
+                font-weight: 600;
+                color: #0f172a;
+                font-size: 0.95rem;
+            }
+            .cm-sessions {
+                font-size: 0.9rem;
+                white-space: nowrap;
+            }
+            .cm-sessions .delivered { color: #0f172a; font-weight: 600; }
+            .cm-sessions .planned   { color: #94a3b8; }
+            .cm-pct-cell { min-width: 110px; }
+            .cm-pct-val {
+                font-weight: 700;
+                font-size: 0.93rem;
+                margin-bottom: 4px;
+            }
+            .cm-bar-track {
+                height: 4px;
+                background: #e2e8f0;
+                border-radius: 999px;
+                width: 90px;
+                overflow: hidden;
+            }
+            .cm-bar-fill {
+                height: 4px;
+                border-radius: 999px;
+            }
+            .pct-green  { color: #16a34a; }
+            .pct-orange { color: #d97706; }
+            .pct-red    { color: #dc2626; }
+            .bar-green  { background: #16a34a; }
+            .bar-orange { background: #d97706; }
+            .bar-red    { background: #dc2626; }
+            .bar-black  { background: #0f172a; }
+            .cm-arrow { color: #cbd5e1; font-size: 0.9rem; }
+            /* ── Course Detail ─────────────────────────── */
+            .cd-header-wrap {
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                margin-bottom: 4px;
+                flex-wrap: wrap;
+            }
+            .cd-title {
+                font-size: 1.55rem;
+                font-weight: 800;
+                color: #0f172a;
+                line-height: 1.15;
+            }
+            .cd-subtitle {
+                font-size: 0.9rem;
+                color: #64748b;
+                margin-bottom: 14px;
+            }
+            .cd-stats-bar {
+                display: flex;
+                gap: 0;
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 2px 12px rgba(15,23,42,0.05);
+                margin-bottom: 18px;
+                flex-wrap: wrap;
+            }
+            .cd-stat-item {
+                flex: 1 1 120px;
+                padding: 16px 20px;
+                border-right: 1px solid #f1f5f9;
+            }
+            .cd-stat-item:last-child { border-right: none; }
+            .cd-stat-label {
+                font-size: 0.78rem;
+                font-weight: 600;
+                color: #94a3b8;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                margin-bottom: 6px;
+            }
+            .cd-stat-value {
+                font-size: 1.6rem;
+                font-weight: 800;
+                color: #0f172a;
+                line-height: 1;
+            }
+            .cd-stat-sub {
+                font-size: 0.78rem;
+                color: #64748b;
+                margin-top: 3px;
+            }
+            .cd-stat-value.accent-orange { color: #d97706; }
+            .cd-stat-value.accent-green  { color: #16a34a; }
+            /* ── Unit table (L/P/E tab) ────────────────── */
+            .unit-table {
+                width: 100%;
+                border-collapse: collapse;
+                background: #ffffff;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 2px 12px rgba(15,23,42,0.05);
+                font-size: 0.9rem;
+            }
+            .unit-table thead tr { background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+            .unit-table thead th { padding: 10px 14px; font-weight: 600; color: #64748b; font-size: 0.8rem; text-align: left; }
+            .unit-table tbody tr { border-bottom: 1px solid #f1f5f9; }
+            .unit-table tbody tr:last-child { border-bottom: none; }
+            .unit-table td { padding: 11px 14px; vertical-align: middle; }
+            .unit-type-badge {
+                display: inline-block;
+                padding: 3px 8px;
+                border-radius: 6px;
+                font-size: 0.75rem;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+            }
+            .badge-lecture  { background: #dbeafe; color: #1d4ed8; }
+            .badge-practice { background: #d1fae5; color: #065f46; }
+            .badge-exam     { background: #fef3c7; color: #92400e; }
+            .badge-quiz     { background: #fef9c3; color: #854d0e; }
+            /* ── Quiz card rows (Image #13 style) ───────*/
+            .qz-card-container {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 2px 12px rgba(15,23,42,0.05);
+                font-size: 0.9rem;
+            }
+            .qz-card-header {
+                display: flex;
+                align-items: center;
+                padding: 10px 16px;
+                background: #f8fafc;
+                border-bottom: 1px solid #e2e8f0;
+                font-size: 0.78rem;
+                font-weight: 600;
+                color: #94a3b8;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            .qz-card-row {
+                display: flex;
+                align-items: center;
+                padding: 13px 16px;
+                border-bottom: 1px solid #f1f5f9;
+                transition: background 0.12s;
+            }
+            .qz-card-row:last-child { border-bottom: none; }
+            .qz-card-row:hover { background: #f8fafc; }
+            .qz-num      { width: 34px; min-width: 34px; color: #94a3b8; font-size: 0.82rem; }
+            .qz-name     { flex: 1; font-weight: 600; color: #0f172a; padding-right: 12px; }
+            .qz-badge    { width: 150px; min-width: 120px; display: inline-block;
+                           padding: 3px 10px; border-radius: 6px; font-size: 0.75rem;
+                           font-weight: 700; letter-spacing: 0.04em; text-align: center; }
+            .qz-th-att   { width: 90px; min-width: 70px; font-size: 0.88rem; }
+            .qz-th-pas   { width: 80px; min-width: 60px; font-size: 0.88rem; }
+            .qz-th-score { width: 90px; min-width: 70px; font-size: 0.88rem; }
+            .qz-th-pct   { width: 80px; min-width: 60px; font-weight: 700; }
+            .qz-arrow    { width: 20px; min-width: 20px; color: #cbd5e1; text-align: right; }
+            /* ── LPE Card rows (Image #10 style) ─────── */
+            .lpe-card-container {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 2px 12px rgba(15,23,42,0.05);
+                font-size: 0.9rem;
+            }
+            .lpe-card-header {
+                display: flex;
+                align-items: center;
+                padding: 10px 16px;
+                background: #f8fafc;
+                border-bottom: 1px solid #e2e8f0;
+                font-size: 0.78rem;
+                font-weight: 600;
+                color: #94a3b8;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                gap: 0;
+            }
+            .lpe-card-row {
+                display: flex;
+                align-items: center;
+                padding: 13px 16px;
+                border-bottom: 1px solid #f1f5f9;
+                gap: 0;
+                transition: background 0.12s;
+            }
+            .lpe-card-row:last-child { border-bottom: none; }
+            .lpe-card-row:hover { background: #f8fafc; }
+            /* Column widths */
+            .lpe-num,     .lpe-th-num     { width: 36px;  min-width: 36px;  color: #94a3b8; font-size: 0.82rem; }
+            .lpe-name,    .lpe-th-name    { flex: 1;      font-weight: 600; color: #0f172a; padding-right: 12px; }
+            .lpe-badge,   .lpe-th-badge   { width: 100px; min-width: 90px; }
+            .lpe-students,.lpe-th-students { width: 200px; min-width: 160px; font-size: 0.85rem; }
+            .lpe-pct,     .lpe-th-pct     { width: 72px;  min-width: 60px;  font-weight: 700; font-size: 0.93rem; text-align: right; }
+            .lpe-bar-wrap,.lpe-th-bar     { width: 110px; min-width: 80px;  margin: 0 12px; }
+            .lpe-arrow,   .lpe-th-arrow   { width: 20px;  min-width: 20px;  color: #cbd5e1; text-align: right; }
+            /* Badge styles for LPE */
+            .lpe-badge {
+                display: inline-block;
+                padding: 3px 10px;
+                border-radius: 6px;
+                font-size: 0.75rem;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+            }
+            .lpe-badge-lecture  { background: #f1f5f9; color: #475569; }
+            .lpe-badge-practice { background: #ccfbf1; color: #065f46; }
+            .lpe-badge-exam     { background: #fee2e2; color: #991b1b; }
+            .lpe-badge-quiz     { background: #fef9c3; color: #854d0e; }
+            /* Student count spans */
+            .lpe-stu-count  { color: #0f172a; font-weight: 600; }
+            .lpe-stu-of     { color: #64748b; }
+            .lpe-stu-pending { color: #ef4444; font-size: 0.8rem; }
+            /* LPE bar */
+            .lpe-bar-wrap {
+                height: 4px;
+                background: #e2e8f0;
+                border-radius: 999px;
+                overflow: hidden;
+            }
+            .lpe-bar-fill {
+                height: 4px;
+                border-radius: 999px;
+                transition: width 0.3s;
+            }
+            /* ── Section filter pills ──────────────────── */
+            .section-pills {
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+                margin-bottom: 14px;
+            }
+            /* ── Quiz funnel cards ─────────────────────── */
+            .quiz-funnel-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                margin-bottom: 16px;
+            }
+            .quiz-funnel-item {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 14px 16px;
+            }
+            .quiz-funnel-label { font-size: 0.8rem; color: #64748b; margin-bottom: 4px; }
+            .quiz-funnel-value { font-size: 1.5rem; font-weight: 800; color: #0f172a; }
+            .quiz-funnel-value.red    { color: #dc2626; }
+            .quiz-funnel-value.green  { color: #16a34a; }
+            .quiz-funnel-value.orange { color: #d97706; }
+            .quiz-funnel-sub { font-size: 0.78rem; color: #94a3b8; margin-top: 2px; }
+            .quiz-pass-banner {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+                border: 1px solid rgba(16, 185, 129, 0.3);
+                border-left: 4px solid #10b981;
+                border-radius: 16px;
+                padding: 14px 20px;
+                margin-bottom: 14px;
+                flex-wrap: wrap;
+            }
+            .quiz-pass-label {
+                font-size: 0.88rem;
+                font-weight: 700;
+                color: #065f46;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                white-space: nowrap;
+            }
+            .quiz-pass-value {
+                font-size: 1.6rem;
+                font-weight: 800;
+                color: #059669;
+                line-height: 1;
+                white-space: nowrap;
+            }
+            .quiz-pass-caption {
+                font-size: 0.82rem;
+                color: #047857;
+                line-height: 1.4;
+                opacity: 0.85;
+            }
             div[data-testid="stDataFrame"] {
                 border: 1px solid rgba(148, 163, 184, 0.24);
                 border-radius: 18px;
@@ -2662,13 +4500,20 @@ def main():
     inject_custom_css()
 
     with st.sidebar:
-        st.markdown("## Audit Analysis")
-        st.caption("Live Streamlit dashboard for delivery and assessment tracking.")
-        batch = st.selectbox("Batch", ["NIAT 24", "NIAT 25", "NIAT 26"], index=1)
+        st.markdown(
+            "<div style='padding:18px 4px 8px 4px'>"
+            "<div style='font-size:1.25rem;font-weight:800;color:#0f172a;letter-spacing:-0.02em'>NIAT Audit</div>"
+            "<div style='font-size:0.75rem;color:#64748b;margin-top:2px'>Delivery &amp; Assessment Dashboard</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("<hr style='margin:8px 0 16px 0;border:none;border-top:1px solid #e2e8f0'>", unsafe_allow_html=True)
+
+        st.markdown("<div style='font-size:0.72rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px'>Filters</div>", unsafe_allow_html=True)
+        batch = st.selectbox("Batch", ["NIAT 24", "NIAT 25", "NIAT 26"], index=1, label_visibility="collapsed" if False else "visible")
         available_semesters = get_available_semesters_for_batch(batch)
         if not available_semesters:
-            st.warning(f"No configured semesters are available yet for {batch}.")
-            st.caption("Future batches stay hidden until their semester windows start, so the dashboard avoids irrelevant fetches.")
+            st.warning(f"No semesters available yet for {batch}.")
             st.stop()
         default_semester = available_semesters[-1]
         previous_batch = st.session_state.get("batch")
@@ -2676,13 +4521,26 @@ def main():
         if previous_batch == batch and previous_semester in available_semesters:
             default_semester = previous_semester
         semester = st.selectbox("Semester", available_semesters, index=available_semesters.index(default_semester))
-        st.caption(f"Available for {batch}: {', '.join(available_semesters)}")
-        analysis_type = st.radio("Grouping Logic", ["overview", "design", "delivered"], format_func=lambda value: value.title())
-        load_clicked = st.button("Load latest data", type="primary", use_container_width=True)
-        st.markdown("---")
-        st.caption("Overview starts with the university timeline table and drills into a single university course breakdown.")
-        st.caption("Design groups universities by planned hours. Delivered groups them by completed slots.")
-        st.caption("Streamlit Cloud must have BigQuery credentials in app secrets.")
+
+        st.markdown("<hr style='margin:12px 0;border:none;border-top:1px solid #e2e8f0'>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.72rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px'>View</div>", unsafe_allow_html=True)
+        analysis_type = st.radio(
+            "Grouping Logic",
+            ["overview", "design", "delivered"],
+            format_func=lambda v: {"overview": "Overview", "design": "Planned Bands", "delivered": "Delivered Bands"}[v],
+            label_visibility="collapsed",
+        )
+        st.markdown(
+            {
+                "overview": "<div style='font-size:0.75rem;color:#64748b;line-height:1.5;padding:6px 0'>University timeline table — click a row to open its course breakdown.</div>",
+                "design":   "<div style='font-size:0.75rem;color:#64748b;line-height:1.5;padding:6px 0'>Groups universities by <strong>planned</strong> session volume.</div>",
+                "delivered":"<div style='font-size:0.75rem;color:#64748b;line-height:1.5;padding:6px 0'>Groups universities by <strong>delivered</strong> slot count.</div>",
+            }[analysis_type],
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<hr style='margin:12px 0;border:none;border-top:1px solid #e2e8f0'>", unsafe_allow_html=True)
+        load_clicked = st.button("Refresh data", type="primary", use_container_width=True)
 
     if load_clicked or "semester_df" not in st.session_state or st.session_state.get("batch") != batch or st.session_state.get("semester") != semester:
         with st.spinner("Fetching data from BigQuery..."):
@@ -2871,7 +4729,8 @@ def main():
         ]
     ).sort_values(["Avg Delivery %", "University"], ascending=[False, True]).reset_index(drop=True)
 
-    university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles)
+    _quiz_pass_pct = (new_metrics.get("quiz", {}).get(selected_university) or {}).get("classroom_quiz_pass_pct")
+    university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles, quiz_pass_pct=_quiz_pass_pct)
     if university_metrics is None:
         st.warning("No university data available for the current selection.")
         st.stop()
@@ -3074,6 +4933,7 @@ def main():
             nav_col_1, nav_col_2, nav_col_3 = st.columns([0.34, 1.35, 1.1], gap="medium", vertical_alignment="bottom")
             with nav_col_1:
                 if st.button("←", key="overview_back_arrow", use_container_width=True):
+                    st.session_state.pop("selected_course_for_detail", None)
                     queue_overview_navigation()
                     st.rerun()
             sections = get_available_sections(semester_df, selected_university)
@@ -3085,92 +4945,227 @@ def main():
             with nav_col_3:
                 selected_section_label = st.selectbox("Section", section_options, key="selected_section_label")
             selected_section = "" if selected_section_label == "All Sections" else selected_section_label
-            university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles)
+            _quiz_pass_pct = (new_metrics.get("quiz", {}).get(selected_university) or {}).get("classroom_quiz_pass_pct")
+            university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles, quiz_pass_pct=_quiz_pass_pct)
             if university_metrics is None:
                 st.warning("No university data available for the current selection.")
                 st.stop()
             course_table, hidden_courses = filter_course_table(university_metrics["courseTable"], semester)
-        scope_label = selected_section if selected_section else "All sections"
-        render_section_header(f"{selected_university} - {scope_label}", "Detailed course view for the selected university and section scope.")
+
+        # ── Semester window info ───────────────────────────────────────────────
         if dates:
             st.markdown(
                 f"<div class='info-card'><strong>Semester window:</strong> {escape_html(dates['start'])} to {escape_html(dates['end'])}</div>",
                 unsafe_allow_html=True,
             )
-        if hidden_courses:
-            st.markdown(
-                f"<div class='info-card'><strong>Course cleanup applied:</strong> showing {escape_html(len(course_table))} focus courses and hiding {escape_html(hidden_courses)} support courses to keep the breakdown readable.</div>",
-                unsafe_allow_html=True,
-            )
-        selected_university_meta = next((item for item in universities if item["name"] == selected_university), None)
-        detail_metrics = [
-            {"label": "Courses Shown", "value": format_metric_value(len(course_table), decimals=0), "help": "Visible courses after removing non-core subjects from the breakdown."},
-            {"label": "Students", "value": format_metric_value(university_metrics["classSize"], decimals=0), "help": "Section roster size for the selected scope."},
-            {"label": "Allotted Hours", "value": format_metric_value(selected_university_meta["allottedHours"] if selected_university_meta else None, decimals=1), "help": "Planned hours configured for the selected university."},
-        ]
-        detail_metrics.extend(
-            [
-                {"label": "Total Slots", "value": format_metric_value(university_metrics["totalSessions"], decimals=1), "help": "Combined lecture, practice, and exam slots."},
-                {"label": "Avg Delivery %", "value": format_metric_value(university_metrics["overallCompletion"], suffix="%"), "help": "Overall completion across all session types in this scope."},
-            ]
-        )
-        render_metric_row(detail_metrics)
-        render_metric_row(
-            [
-                {"label": "Lecture %", "value": format_metric_value(university_metrics["lectureCompletion"], suffix="%"), "help": "Lecture completion percentage."},
-                {"label": "Practice %", "value": format_metric_value(university_metrics["practiceCompletion"], suffix="%"), "help": "Practice completion percentage, not student completion."},
-                {"label": "Exam %", "value": format_metric_value(university_metrics["examCompletion"], suffix="%"), "help": "Exam completion percentage."},
-                {"label": "Score %", "value": format_metric_value(university_metrics["assessmentScore"], suffix="%"), "help": "Average assessment score percentage."},
-                {"label": "Participation #", "value": format_metric_value(university_metrics["assessmentParticipation"], decimals=1), "help": "Average count of students who attempted the mapped assessments."},
-            ]
-        )
-        render_metric_row(
-            [
-                {"label": "Skill Score %", "value": format_metric_value(university_metrics["skillAssessmentScore"], suffix="%"), "help": "Average skill assessment score percentage for the mapped courses."},
-                {"label": "Skill Participation #", "value": format_metric_value(university_metrics["skillAssessmentParticipation"], decimals=1), "help": "Average count of students who attempted mapped skill assessments."},
-                {"label": "Academic Assessment Score %", "value": format_metric_value(university_metrics["gradedAssessmentScore"], suffix="%"), "help": "Average academic assessment score percentage for the mapped courses."},
-                {"label": "Academic Assessment Participation #", "value": format_metric_value(university_metrics["gradedAssessmentParticipation"], decimals=1), "help": "Average count of students who attempted mapped academic assessments."},
-            ]
-        )
-        with st.expander("Metric definitions"):
-            st.markdown(
-                """
-                - `Avg Delivery %`: average completion view used for university-level comparison.
-                - `Practice %`, `Lecture %`, `Exam %`: completion percentages for those session types.
-                - `Score %`: average assessment score percentage.
-                - `Participation #`: average number of learners who attempted the mapped assessments.
-                - `Skill Score %` / `Skill Participation #`: visible score and attempts for mapped skill assessments.
-                - `Academic Assessment Score %` / `Academic Assessment Participation #`: visible score and attempts for mapped academic assessments.
-                """
-            )
-        with st.expander("Pass field diagnostics (debug)"):
-            diag = fetch_pass_field_values(batch, semester)
-            if diag:
-                st.dataframe(pd.DataFrame(diag), use_container_width=True, hide_index=True)
-                st.caption("Shows distinct values of best_attempt_evaluation_result (quiz) and section_evaluation_result (skill/graded). Pass comparison uses IN ('PASS','PASSED').")
+
+        # ── Fetch planned/delivered per course from session_adherence ──────────
+        with st.spinner("Loading course delivery stats…"):
+            delivery_stats_df = fetch_course_delivery_stats(batch, semester, selected_university)
+
+        # ── Fetch per-course quiz pass rates ──────────────────────────────────
+        with st.spinner("Loading quiz pass rates…"):
+            quiz_pass_by_course_df = fetch_quiz_pass_by_course(batch, semester, selected_university)
+
+        # Build lookups: by normalized title AND by portal_course_id
+        _quiz_pass_course_lookup: dict[str, float | None] = {}
+        _quiz_pass_by_portal_id: dict[str, float | None] = {}
+        if not quiz_pass_by_course_df.empty and "course_title" in quiz_pass_by_course_df.columns:
+            for _, _qr in quiz_pass_by_course_df.iterrows():
+                _ct = str(_qr.get("course_title") or "").strip()
+                _pid = str(_qr.get("portal_course_id") or "").strip()
+                _pp = _qr.get("pass_pct")
+                _pval: float | None
+                try:
+                    _pval = None if (_pp is None or pd.isna(_pp)) else float(_pp)
+                except (TypeError, ValueError):
+                    _pval = None
+                if _ct:
+                    _quiz_pass_course_lookup[normalize_text(_ct)] = _pval
+                if _pid:
+                    _quiz_pass_by_portal_id[_pid] = _pval
+
+        # portal_course_id map: normalize_text(sem_course_title) → portal_course_id
+        with st.spinner("Loading portal course ID map…"):
+            _sem_course_portal_ids = fetch_portal_course_id_map(batch, semester)
+
+        def _course_quiz_pass(course_name: str) -> float | None:
+            """Return per-course quiz pass % — title match first, then portal_course_id fallback."""
+            key = normalize_text(course_name)
+            # 1. Exact title match
+            if key in _quiz_pass_course_lookup:
+                return _quiz_pass_course_lookup[key]
+            # 2. Partial title match
+            for k, v in _quiz_pass_course_lookup.items():
+                if key in k or k in key:
+                    return v
+            # 3. Portal course ID fallback via sem_course_title → portal_course_id
+            pid = _sem_course_portal_ids.get(key)
+            if pid and pid in _quiz_pass_by_portal_id:
+                return _quiz_pass_by_portal_id[pid]
+            return None
+
+        def _get_delivery_row(course_name: str) -> dict | None:
+            if delivery_stats_df.empty:
+                return None
+            norm = normalize_text(course_name)
+            # 1. Exact normalized match
+            for _, r in delivery_stats_df.iterrows():
+                if normalize_text(str(r.get("course", ""))) == norm:
+                    return r.to_dict()
+            # 2. Partial match
+            for _, r in delivery_stats_df.iterrows():
+                raw_norm = normalize_text(str(r.get("course", "")))
+                if norm in raw_norm or raw_norm in norm:
+                    return r.to_dict()
+            # 3. Alias-group match: if both names normalize to the same canonical
+            #    alias-group key they are the same subject regardless of how the
+            #    title is stored in session_adherence.
+            #    e.g. "Advanced Communicative English" and "Communicative English
+            #    Advanced" both resolve to "Advanced Communicative English".
+            norm_alias = normalize_text(normalize_course_name(course_name, semester))
+            for _, r in delivery_stats_df.iterrows():
+                raw = str(r.get("course", ""))
+                if normalize_text(normalize_course_name(raw, semester)) == norm_alias:
+                    return r.to_dict()
+            return None
+
+        # ── Build course_rows for the matrix ──────────────────────────────────
+        course_rows = []
+        for _, ct_row in course_table.iterrows():
+            cname = ct_row["Course"]
+            dr = _get_delivery_row(cname)
+            delivered = dr["total_delivered"] if dr else ct_row.get("Total Slots")
+            planned   = dr["total_planned"]   if dr else None
+            adherence = dr["adherence_pct"]   if dr else None
+            # avg completion across session types present
+            comp_vals = [v for v in [ct_row.get("Lecture %"), ct_row.get("Practice %"), ct_row.get("Exam %")] if v is not None]
+            completion = sum(comp_vals) / len(comp_vals) if comp_vals else None
+            skill_val = ct_row.get("Skill Score %")
+            course_rows.append({
+                "course":         cname,
+                "delivered":      delivered,
+                "planned":        planned,
+                "lecture_slots":  ct_row.get("Lecture Slots"),
+                "practice_slots": ct_row.get("Practice Slots"),
+                "exam_slots":     ct_row.get("Exam Slots"),
+                "total_slots":    ct_row.get("Total Slots"),
+                "lecture_pct":    ct_row.get("Lecture %"),
+                "practice_pct":   ct_row.get("Practice %"),
+                "exam_pct":       ct_row.get("Exam %"),
+                "adherence_pct":  adherence if adherence is not None else completion,
+                "completion_pct": completion,
+                "quiz_pass_pct":  _course_quiz_pass(cname),
+                "skill_pct":      skill_val,
+            })
+
+        # ── Course Matrix or Course Detail ─────────────────────────────────────
+        selected_course_for_detail = st.session_state.get("selected_course_for_detail")
+
+        if selected_course_for_detail is None:
+            # ── MATRIX VIEW ───────────────────────────────────────────────────
+            scope_label = selected_section if selected_section else "All sections"
+            render_section_header(f"{selected_university} — {scope_label}", "Select a course row to drill into schedule adherence, unit completion, quizzes, and assessments.")
+            if hidden_courses:
+                st.markdown(
+                    f"<div class='info-card'>Showing {escape_html(len(course_table))} core courses · {escape_html(hidden_courses)} support courses hidden.</div>",
+                    unsafe_allow_html=True,
+                )
+            clicked = render_course_matrix(course_rows, selected_course_for_detail)
+            if clicked:
+                st.session_state["selected_course_for_detail"] = clicked
+                st.session_state.pop("lpe_sec", None)
+                st.session_state.pop("quiz_sec", None)
+                st.rerun()
+
+        else:
+            # ── DETAIL VIEW ───────────────────────────────────────────────────
+            back_col, _ = st.columns([0.15, 0.85])
+            with back_col:
+                if st.button("← Courses", key="back_to_matrix"):
+                    st.session_state.pop("selected_course_for_detail", None)
+                    st.session_state.pop("lpe_sec", None)
+                    st.session_state.pop("quiz_sec", None)
+                    st.session_state.pop("cm_course_select", None)
+                    st.rerun()
+
+            # Filter semester_df to selected course
+            # Build a helper that maps a raw content course title to its display sem_course_title
+            # using the same logic as build_university_metrics / _display_course
+            def _raw_to_display(raw_course: str) -> str:
+                normalized = normalize_course_name(str(raw_course), semester)
+                return sem_course_titles.get(normalize_text(normalized), normalized)
+
+            sem_course_df = semester_df[
+                (semester_df["institute"] == selected_university) &
+                (semester_df["course"].apply(lambda c: normalize_text(_raw_to_display(str(c)))) == normalize_text(selected_course_for_detail))
+            ].copy()
+            if selected_section:
+                sem_course_df = sem_course_df[sem_course_df["section"] == selected_section]
+
+            # Collect ALL raw session_adherence course titles that belong to the same
+            # subject as selected_course_for_detail (e.g. "Communicative English Advanced"
+            # + "English B1 Level Learner Program" both map to "Advanced Communicative English").
+            _norm_alias = normalize_text(normalize_course_name(selected_course_for_detail, semester))
+            _all_raw_titles: list[str] = []
+            if not delivery_stats_df.empty:
+                for _, _dr in delivery_stats_df.iterrows():
+                    _raw = str(_dr.get("course", ""))
+                    if normalize_text(normalize_course_name(_raw, semester)) == _norm_alias:
+                        if _raw not in _all_raw_titles:
+                            _all_raw_titles.append(_raw)
+            raw_course_titles = tuple(_all_raw_titles) if _all_raw_titles else (selected_course_for_detail,)
+
+            # Aggregate planned/delivered across all matching raw titles
+            _sub_rows = [_get_delivery_row(t) for t in raw_course_titles]
+            _sub_rows = [r for r in _sub_rows if r]
+            if _sub_rows:
+                _tot_planned   = sum(r.get("total_planned")   or 0 for r in _sub_rows)
+                _tot_delivered = sum(r.get("total_delivered") or 0 for r in _sub_rows)
+                sel_delivery = {
+                    "course":          raw_course_titles[0],
+                    "total_planned":   _tot_planned,
+                    "total_delivered": _tot_delivered,
+                    "adherence_pct":   round(_tot_delivered / _tot_planned * 100, 1) if _tot_planned else None,
+                }
             else:
-                st.caption("No diagnostic data returned.")
-        st.dataframe(
-            course_table,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Course": st.column_config.TextColumn("Course"),
-                "Lecture Slots": st.column_config.NumberColumn("Lecture Slots", format="%.1f"),
-                "Practice Slots": st.column_config.NumberColumn("Practice Slots", format="%.1f"),
-                "Exam Slots": st.column_config.NumberColumn("Exam Slots", format="%.1f"),
-                "Total Slots": st.column_config.NumberColumn("Total Slots", format="%.1f"),
-                "Lecture %": st.column_config.NumberColumn("Lecture %", format="%.1f%%"),
-                "Practice %": st.column_config.NumberColumn("Practice %", format="%.1f%%"),
-                "Exam %": st.column_config.NumberColumn("Exam %", format="%.1f%%"),
-                "Score %": st.column_config.NumberColumn("Score %", format="%.1f%%"),
-                "Participation #": st.column_config.NumberColumn("Participation #", format="%.1f"),
-                "Skill Score %": st.column_config.NumberColumn("Skill Score %", format="%.1f%%"),
-                "Skill Participation #": st.column_config.NumberColumn("Skill Participation #", format="%.1f"),
-                "Academic Assessment Score %": st.column_config.NumberColumn("Academic Assessment Score %", format="%.1f%%"),
-                "Academic Assessment Participation #": st.column_config.NumberColumn("Academic Assessment Participation #", format="%.1f"),
-            },
-        )
+                sel_delivery = None
+
+            # Pre-fetch units and quiz data for header stats (cached, so also reused in tabs)
+            with st.spinner("Loading course data…"):
+                _detail_units_df = fetch_course_session_units(batch, semester, selected_university, raw_course_titles)
+
+            # Render header + stats bar
+            _detail_quiz_pct = _course_quiz_pass(selected_course_for_detail)
+            render_course_detail_header(selected_course_for_detail, sel_delivery, _detail_units_df, _detail_quiz_pct)
+
+            # ── Tabs ──────────────────────────────────────────────────────────
+            tab1, tab2, tab3 = st.tabs([
+                "📅 Schedule Adherence",
+                "📖 Lecture / Practice / Exam",
+                "🎯 Assessments",
+            ])
+
+            with tab1:
+                with st.spinner("Loading weekly delivery data…"):
+                    weekly_df = fetch_course_weekly_delivery(batch, semester, selected_university, raw_course_titles)
+                render_tab_schedule_adherence(weekly_df)
+
+            with tab2:
+                units_df = _detail_units_df
+                sec_list = sorted(sem_course_df["section"].unique().tolist()) if not sem_course_df.empty else []
+                render_tab_lecture_practice_exam(units_df, sec_list)
+
+            with tab3:
+                course_assessment_df = assessment_df[
+                    (assessment_df["university"] == selected_university) &
+                    (assessment_df["course_code"].apply(lambda c: normalize_text(_raw_to_display(str(c)))) == normalize_text(selected_course_for_detail))
+                ].copy()
+                if selected_section:
+                    course_assessment_df = course_assessment_df[course_assessment_df["section"] == selected_section]
+                sec_list_asmt = sorted(course_assessment_df["section"].unique().tolist()) if not course_assessment_df.empty else []
+                render_tab_assessments(course_assessment_df, selected_course_for_detail, sec_list_asmt)
+
 
 
 
