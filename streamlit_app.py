@@ -5006,9 +5006,11 @@ def main():
         with st.spinner("Loading quiz pass rates…"):
             quiz_pass_by_course_df = fetch_quiz_pass_by_course(batch, semester, selected_university)
 
-        # Build lookups: by normalized title AND by portal_course_id
+        # Build lookups: by normalized title, by portal_course_id, and by canonical alias
         _quiz_pass_course_lookup: dict[str, float | None] = {}
         _quiz_pass_by_portal_id: dict[str, float | None] = {}
+        # canonical → list of pass_pct values (averaged for courses with multiple raw titles)
+        _quiz_pass_by_canonical: dict[str, list[float]] = {}
         if not quiz_pass_by_course_df.empty and "course_title" in quiz_pass_by_course_df.columns:
             for _, _qr in quiz_pass_by_course_df.iterrows():
                 _ct = str(_qr.get("course_title") or "").strip()
@@ -5021,6 +5023,10 @@ def main():
                     _pval = None
                 if _ct:
                     _quiz_pass_course_lookup[normalize_text(_ct)] = _pval
+                    # Also index by canonical name so aliased courses resolve correctly
+                    _canonical_key = normalize_text(normalize_course_name(_ct, semester))
+                    if _pval is not None:
+                        _quiz_pass_by_canonical.setdefault(_canonical_key, []).append(_pval)
                 if _pid:
                     _quiz_pass_by_portal_id[_pid] = _pval
 
@@ -5042,6 +5048,13 @@ def main():
             pid = _sem_course_portal_ids.get(key)
             if pid and pid in _quiz_pass_by_portal_id:
                 return _quiz_pass_by_portal_id[pid]
+            # 4. Canonical alias match — resolves cases where the portal stores the raw
+            #    title (e.g. "English Course") but the matrix row uses the canonical name
+            #    (e.g. "English Communication Foundation"). Both normalize to the same key.
+            canonical_key = normalize_text(normalize_course_name(course_name, semester))
+            if canonical_key in _quiz_pass_by_canonical:
+                vals = _quiz_pass_by_canonical[canonical_key]
+                return round(sum(vals) / len(vals), 1) if vals else None
             return None
 
         def _get_delivery_row(course_name: str) -> dict | None:
