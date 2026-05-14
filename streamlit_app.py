@@ -1572,17 +1572,14 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
 
     Actual schema used:
       institute_name, batch_name, user_id, quiz_id,
-      derived_unit_type, best_attempt_evaluation_result, session_date
+      derived_unit_type, best_attempt_percentage_score, session_date
 
     Classification via derived_unit_type:
       CLASSROOM_QUIZ                            → classroom category
       MODULE_QUIZ | DAILY_QUIZ | COURSE_QUIZ    → module category
 
-    Pass/Fail: best_attempt_evaluation_result = 'PASS'
-
-    Aggregation is done at institute level (not per-section AVG) to ensure
-    the roster denominator always resolves correctly regardless of section-name
-    differences between tables.
+    Module Quiz Pass %: average of per-quiz pass rates across all module/course quizzes
+    at the university (i.e. for each quiz compute passed/attempted, then average across quizzes).
     """
     refs = get_table_refs()
     where_clauses = ["TRIM(COALESCE(q.institute_name, '')) != ''"]
@@ -1592,9 +1589,10 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
     if should_apply_batch_filter(batch):
         where_clauses.append(f"LOWER(COALESCE(q.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
 
+    where_str = ' AND '.join(where_clauses)
+
     sql = f"""
         WITH institute_roster AS (
-          -- Total enrolled students per institute (sum across all sections)
           SELECT
             u.institute_name AS institute,
             COUNT(DISTINCT u.user_id) AS total_students
@@ -1603,48 +1601,57 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
           GROUP BY institute
         ),
         quiz_totals AS (
-          -- Aggregate directly at institute level; classroom and module are counted independently.
-          -- Pass condition uses best_attempt_percentage_score >= 80 to avoid
-          -- boolean-column cast issues with best_attempt_evaluation_result and to
-          -- produce genuinely different classroom vs module pass rates.
+          -- Institute-level counts for classroom metrics and module participation
           SELECT
             q.institute_name AS institute,
-            -- Classroom: attempted = distinct users with classroom quiz; passed = distinct passers (score ≥ 80)
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ', q.user_id, NULL))
               AS classroom_attempted,
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ'
               AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
               q.user_id, NULL))
               AS classroom_passed,
-            -- Module: conducted = distinct quiz_ids; attempted/passed = distinct user_ids (score ≥ 80)
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ'),
               q.quiz_id, NULL))
               AS module_quiz_conducted,
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ'),
               q.user_id, NULL))
-              AS module_attempted,
-            COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
-              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
-              q.user_id, NULL))
-              AS module_passed
+              AS module_attempted
           FROM {refs["quiz_attempts"]} q
-          WHERE {' AND '.join(where_clauses)}
+          WHERE {where_str}
             AND q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
           GROUP BY q.institute_name
+        ),
+        module_per_quiz AS (
+          -- Per-quiz pass rate for each module/course quiz
+          SELECT
+            q.institute_name AS institute,
+            q.quiz_id,
+            SAFE_DIVIDE(
+              COUNT(DISTINCT IF(SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
+                                q.user_id, NULL)),
+              NULLIF(COUNT(DISTINCT q.user_id), 0)
+            ) * 100 AS quiz_pass_pct
+          FROM {refs["quiz_attempts"]} q
+          WHERE {where_str}
+            AND q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
+          GROUP BY q.institute_name, q.quiz_id
+        ),
+        module_pass_avg AS (
+          -- Average of per-quiz pass rates per institute
+          SELECT institute, ROUND(AVG(quiz_pass_pct), 1) AS module_quiz_pass_pct
+          FROM module_per_quiz
+          GROUP BY institute
         )
         SELECT
           qt.institute,
-          -- Classroom Quiz Attempt %: unique users who took a classroom quiz / total enrolled
           ROUND(SAFE_DIVIDE(qt.classroom_attempted, NULLIF(ir.total_students,      0)) * 100, 1) AS classroom_quiz_attempt_pct,
-          -- Classroom Quiz Pass %: unique users who passed ≥1 classroom quiz / unique who attempted
           ROUND(SAFE_DIVIDE(qt.classroom_passed,    NULLIF(qt.classroom_attempted, 0)) * 100, 1) AS classroom_quiz_pass_pct,
           qt.module_quiz_conducted,
-          -- Module Quiz Participation %: unique users who took a module quiz / total enrolled
           ROUND(SAFE_DIVIDE(qt.module_attempted,    NULLIF(ir.total_students,      0)) * 100, 1) AS module_quiz_participation_pct,
-          -- Module Quiz Pass %: unique users who passed ≥1 module quiz / unique who attempted
-          ROUND(SAFE_DIVIDE(qt.module_passed,       NULLIF(qt.module_attempted,    0)) * 100, 1) AS module_quiz_pass_pct
+          mpa.module_quiz_pass_pct
         FROM quiz_totals qt
-        LEFT JOIN institute_roster ir ON ir.institute = qt.institute
+        LEFT JOIN institute_roster ir  ON ir.institute  = qt.institute
+        LEFT JOIN module_pass_avg mpa  ON mpa.institute = qt.institute
         ORDER BY qt.institute
     """
     try:
