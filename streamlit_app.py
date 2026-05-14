@@ -685,11 +685,15 @@ NON_CORE_COURSES_BY_SEMESTER = {
         "Assessment",
         "Module Quiz",
         "Module Assessment 5",
+        "Intro to Tech",
+        "Intro to Software Development",
     },
     "Semester 2": {
         "Assessment",
         "Module Quiz",
         "Module Assessment 5",
+        "Intro to Tech",
+        "Intro to Software Development",
     },
 }
 
