@@ -176,6 +176,25 @@ ASSESSMENT_SLOTS_BY_SEMESTER = {
 }
 
 DELIVERY_MODE_BY_SEMESTER = {
+    "Semester 1": {
+        "A Dy Patil University":            "Full Delivery",
+        "AMET":                             "Full Delivery",
+        "Annamacharya University":          "Co Delivery",
+        "Aurora University":                "Full Delivery",
+        "Chaitanya Deemed-to-be University":"Co Delivery",
+        "Chalapathy (CITY)":               "Hybrid Delivery",
+        "Crescent University":              "Co Delivery",
+        "Malla Reddy Vishwavidyapeeth":     "Full Delivery",
+        "NIAT Chevella":                    "Full Delivery",
+        "Noida International University":   "Co Delivery",
+        "NRI":                              "Co Delivery",
+        "NSRIT University":                 "Hybrid Delivery",
+        "S-VYASA":                          "Co Delivery",
+        "Sanjay Ghodawat University":       "Co Delivery",
+        "Takshasila University":            "Co Delivery",
+        "Vivekananda global University":    "Full Delivery",
+        "Yenapoya University":              "Co Delivery",
+    },
     "Semester 2": {
         "BITS": "Hybrid Delivery",
         "Sanjay Ghodawat University": "Co Delivery",
@@ -5107,13 +5126,25 @@ def main():
             # subject as selected_course_for_detail (e.g. "Communicative English Advanced"
             # + "English B1 Level Learner Program" both map to "Advanced Communicative English").
             _norm_alias = normalize_text(normalize_course_name(selected_course_for_detail, semester))
+            _norm_sel   = normalize_text(selected_course_for_detail)
             _all_raw_titles: list[str] = []
             if not delivery_stats_df.empty:
+                # Pass 1: exact alias match (normalized course name)
                 for _, _dr in delivery_stats_df.iterrows():
                     _raw = str(_dr.get("course", ""))
                     if normalize_text(normalize_course_name(_raw, semester)) == _norm_alias:
                         if _raw not in _all_raw_titles:
                             _all_raw_titles.append(_raw)
+                # Pass 2: partial text match fallback — mirrors _get_delivery_row logic
+                # Catches cases where session_adherence stores a different title variant
+                # (e.g. "Web Application Development 1" vs "Web Application Development-1")
+                if not _all_raw_titles:
+                    for _, _dr in delivery_stats_df.iterrows():
+                        _raw = str(_dr.get("course", ""))
+                        _raw_norm = normalize_text(_raw)
+                        if _norm_sel in _raw_norm or _raw_norm in _norm_sel:
+                            if _raw not in _all_raw_titles:
+                                _all_raw_titles.append(_raw)
             raw_course_titles = tuple(_all_raw_titles) if _all_raw_titles else (selected_course_for_detail,)
 
             # Aggregate planned/delivered across all matching raw titles
