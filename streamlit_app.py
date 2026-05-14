@@ -283,7 +283,7 @@ COURSE_MAPPING_BY_SEMESTER = {
         "GENERATIVE_AI": "Introduction to Generative AI",
         "MATHEMATICS": "Mathematics",
         "BUILD_YOUR_OWN_STATIC_WEBSITE": "Web Application Development 1",
-        "COMMUNICATIVE_ENGLISH_FOUNDATION": "Communicative English Foundation",
+        "COMMUNICATIVE_ENGLISH_FOUNDATION": "English Communication Foundation",
         "PROGRAMMING_FOUNDATIONS": "Computer Programming",
         "QUANTITATIVE_APTITUDE": "Quantitative Aptitude",
         "ENGINEERING_GRAPHICS": "Engineering Drawing",
@@ -364,6 +364,7 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "modern responsive web design",
             "responsive web design using flexbox",
             "html css",
+            "js programming",
             "web application development i",
             "web application development 1",
             "web application development 1 laboratory",
@@ -376,12 +377,14 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "web technologies",
             "web technologies laboratory",
         ],
-        "Communicative English Foundation": [
+        "English Communication Foundation": [
             "communicative english foundation",
+            "english communication foundation",
             "communication english foundation",
             "english foundation",
             "english - basic",
             "english basic",
+            "introduction to english language and communication",
             "aec 1",
             "cambridge english b1",
             "writing practice",
@@ -678,10 +681,12 @@ NON_CORE_COURSES_BY_SEMESTER = {
     "Semester 1": {
         "Assessment",
         "Module Quiz",
+        "Module Assessment 5",
     },
     "Semester 2": {
         "Assessment",
         "Module Quiz",
+        "Module Assessment 5",
     },
 }
 
