@@ -1915,7 +1915,7 @@ def fetch_course_session_units(batch: str, semester: str, institute: str, course
           su.section,
           su.total_sessions,
           su.delivered_sessions,
-          ROUND(SAFE_DIVIDE(su.delivered_sessions, NULLIF(su.total_sessions, 0)) * 100, 1) AS completion_pct,
+          ROUND(LEAST(SAFE_DIVIDE(su.delivered_sessions, NULLIF(su.total_sessions, 0)) * 100, 100.0), 1) AS completion_pct,
           r.total_students,
           -- students_completed only meaningful for PRACTICE (from unlocked_units)
           CASE WHEN su.session_type = 'PRACTICE' THEN pc.students_completed ELSE NULL END AS students_completed
