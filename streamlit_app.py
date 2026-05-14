@@ -361,6 +361,7 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "build your own static website",
             "build your own responsive website",
             "build your own dynamic application",
+            "build your own dynamic web application",
             "modern responsive web design",
             "responsive web design using flexbox",
             "html css",
@@ -382,6 +383,7 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "english communication foundation",
             "communication english foundation",
             "english foundation",
+            "english course",
             "english - basic",
             "english basic",
             "introduction to english language and communication",
@@ -413,6 +415,7 @@ COURSE_ALIAS_GROUPS_BY_SEMESTER = {
             "developer foundations",
             "introduction to computing systems",
             "more python concepts",
+            "advanced programming",
         ],
         "Quantitative Aptitude": [
             "quantitative aptitude",
