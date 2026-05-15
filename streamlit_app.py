@@ -1950,16 +1950,18 @@ def fetch_course_session_units(batch: str, semester: str, institute: str, course
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str) -> pd.DataFrame:
     """
-    Returns per-course quiz pass rates for all courses at a given institute.
-    When portal_course_id exists in the content table, also returns portal_course_id
-    so the caller can match via ID when titles don't align.
+    Returns per-course CLASSROOM quiz pass rates for all courses at a given institute.
+    Used to populate the 'Quiz Pass' column in the course matrix.
+
+    Formula: pass_pct = passed_pairs / attempted_pairs × 100
+      where a pair = (user_id, quiz_id) and passed means score >= 80.
 
     Columns: course_title, portal_course_id (optional), attempted, passed, pass_pct
     """
     refs = get_table_refs()
     where_clauses = [
         f"LOWER(TRIM(COALESCE(q.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
-        "q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')",
+        "q.derived_unit_type = 'CLASSROOM_QUIZ'",
     ]
     window_clause = get_semester_window_clause(semester, batch, "q.institute_name", "q.session_date")
     if window_clause:
@@ -1987,13 +1989,21 @@ def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str) -> pd.D
         SELECT
           c.course_title,
           {extra_select}
-          COUNT(DISTINCT q.user_id)                                         AS attempted,
-          COUNT(DISTINCT CASE WHEN UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%'
-                              THEN q.user_id END)                           AS passed,
+          -- Classroom Quiz Pass % uses student×quiz pairs as the unit:
+          --   numerator   = pairs where best_attempt_percentage_score >= 80
+          --   denominator = total distinct (user_id, quiz_id) pairs attempted
+          -- e.g. 100 students × 3 quizzes = 300 possible pairs;
+          --      150 pairs attempted, 90 passed → pass % = 90/150 = 60%
+          COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
+                                                                            AS attempted,
+          COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                              THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+                         END)                                               AS passed,
           ROUND(SAFE_DIVIDE(
-            COUNT(DISTINCT CASE WHEN UPPER(TRIM(COALESCE(q.best_attempt_evaluation_result, ''))) LIKE '%PASS%'
-                                THEN q.user_id END),
-            NULLIF(COUNT(DISTINCT q.user_id), 0)
+            COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                                THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+                           END),
+            NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
           ) * 100, 1)                                                       AS pass_pct
         FROM {refs["quiz_attempts"]} q
         INNER JOIN content c ON CAST(q.quiz_id AS STRING) = c.unit_id
