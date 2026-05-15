@@ -1601,14 +1601,20 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
           GROUP BY institute
         ),
         quiz_totals AS (
-          -- Institute-level counts for classroom metrics and module participation
+          -- Institute-level counts for classroom metrics and module participation.
+          -- Classroom pass % is computed at (student × quiz) level:
+          --   denominator = total unique student-quiz attempt pairs
+          --   numerator   = pairs where best_attempt_percentage_score >= 80
+          -- This correctly penalises quizzes where many students failed,
+          -- unlike counting only distinct users who passed at least one quiz.
           SELECT
             q.institute_name AS institute,
-            COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ', q.user_id, NULL))
+            COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ',
+              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
               AS classroom_attempted,
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ'
               AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
-              q.user_id, NULL))
+              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
               AS classroom_passed,
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ'),
               q.quiz_id, NULL))
