@@ -692,6 +692,10 @@ NON_CORE_COURSES_BY_SEMESTER = {
         "Module Assessment 5",
         "Intro to Tech",
         "Intro to Software Development",
+        "JS Essentials",
+        "JavaScript Essentials",
+        "NIAT-DSA",
+        "NIAT - DSA",
     },
     "Semester 2": {
         "Assessment",
@@ -3277,7 +3281,7 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
         return None
     # subject_map: {normalize_text(sem_course_title): subject_name} from portal_courses table.
     # Used as primary normalization — maps raw schedule titles to canonical subject names
-    # per university, without relying on hardcoded aliases.
+    # before alias-based fallback.
     _subject_map = subject_map or {}
 
     def _normalize_course(course: str) -> str:
@@ -3363,9 +3367,12 @@ def filter_course_table(course_table: pd.DataFrame, semester: str, institute: st
     if course_table.empty:
         return course_table.copy(), 0
     filtered = course_table.copy()
-    excluded_courses = NON_CORE_COURSES_BY_SEMESTER.get(semester, set())
+    excluded_courses = {
+        normalize_text(course)
+        for course in NON_CORE_COURSES_BY_SEMESTER.get(semester, set())
+    }
     if excluded_courses:
-        filtered = filtered[~filtered["Course"].isin(excluded_courses)].copy()
+        filtered = filtered[~filtered["Course"].map(lambda value: normalize_text(value) in excluded_courses)].copy()
     institute_norm = normalize_text(institute)
     if semester == "Semester 2" and institute_norm in {normalize_text("A Dy Patil University"), normalize_text("A Dy Patil")}:
         dsml_norm = normalize_text("DSML(L2)")
@@ -4910,12 +4917,14 @@ def main():
             assessment_df = fetch_assessment_data(batch, semester)
             new_metrics = fetch_all_new_metrics(batch, semester)
             sem_course_titles = fetch_sem_course_titles(batch, semester)
+            portal_subject_map = fetch_portal_subject_map(batch, semester)
             st.session_state["semester_df"] = semester_df
             st.session_state["planned_slots_df"] = planned_slots_df
             st.session_state["progress_slots_df"] = progress_slots_df
             st.session_state["assessment_df"] = assessment_df
             st.session_state["new_metrics"] = new_metrics
             st.session_state["sem_course_titles"] = sem_course_titles
+            st.session_state["portal_subject_map"] = portal_subject_map
             st.session_state["batch"] = batch
             st.session_state["semester"] = semester
 
@@ -4925,6 +4934,7 @@ def main():
     assessment_df = st.session_state.get("assessment_df", pd.DataFrame())
     new_metrics = st.session_state.get("new_metrics", {})
     sem_course_titles = st.session_state.get("sem_course_titles", {})
+    portal_subject_map = st.session_state.get("portal_subject_map", {})
 
     if semester_df.empty:
         st.warning("No semester data returned. Check the selected filters and Streamlit Cloud secrets.")
@@ -5076,7 +5086,8 @@ def main():
     ).sort_values(["Avg Delivery %", "University"], ascending=[False, True]).reset_index(drop=True)
 
     _quiz_pass_pct = (new_metrics.get("quiz", {}).get(selected_university) or {}).get("classroom_quiz_pass_pct")
-    _subject_map   = fetch_university_subject_map(batch, semester, selected_university)
+    _subject_map   = dict(portal_subject_map)
+    _subject_map.update(fetch_university_subject_map(batch, semester, selected_university))
     university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles, quiz_pass_pct=_quiz_pass_pct, subject_map=_subject_map)
     if university_metrics is None:
         st.warning("No university data available for the current selection.")
@@ -5311,7 +5322,8 @@ def main():
                 selected_section_label = st.selectbox("Section", section_options, key="selected_section_label")
             selected_section = "" if selected_section_label == "All Sections" else selected_section_label
             _quiz_pass_pct = (new_metrics.get("quiz", {}).get(selected_university) or {}).get("classroom_quiz_pass_pct")
-            _subject_map   = fetch_university_subject_map(batch, semester, selected_university)
+            _subject_map   = dict(portal_subject_map)
+            _subject_map.update(fetch_university_subject_map(batch, semester, selected_university))
             university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles, quiz_pass_pct=_quiz_pass_pct, subject_map=_subject_map)
             if university_metrics is None:
                 st.warning("No university data available for the current selection.")
