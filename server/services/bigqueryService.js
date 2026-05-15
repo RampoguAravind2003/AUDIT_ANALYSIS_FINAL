@@ -374,11 +374,11 @@ export async function fetchSemesterData(filters = {}) {
       sc.institute AS institute,
       sc.section AS section,
       sc.session_type AS session_type,
-      COUNT(DISTINCT IF(sc.session_status = 'COMPLETED', sc.session_id, NULL)) AS sessions,
+      COUNT(DISTINCT sc.session_id) AS sessions,
       COALESCE(r.students, 0) AS students,
       ROUND(
         100 * SAFE_DIVIDE(
-          COUNT(DISTINCT IF(sc.session_status = 'COMPLETED', sc.session_id, NULL)),
+          COUNT(DISTINCT IF(UPPER(COALESCE(sc.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'), sc.session_id, NULL)),
           COUNT(DISTINCT sc.session_id)
         ),
         2

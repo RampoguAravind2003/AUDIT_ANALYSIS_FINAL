@@ -37,8 +37,8 @@ export const COURSE_MAPPING_BY_SEMESTER = {
     'BE': 'Business English',
     'IKS': 'Indian Knowledge System',
     'INDIAN_KNOWLEDGE_SYSTEM': 'Indian Knowledge System',
-    'LINEAR_ALGEBRA': 'Linear Algebra & Calculus',
-    'LA_C': 'Linear Algebra & Calculus',
+    'LINEAR_ALGEBRA': 'Linear Algebra and Calculus',
+    'LA_C': 'Linear Algebra and Calculus',
     'ENVIRONMENTAL_SCIENCE': 'Environmental Science',
     'ENV': 'Environmental Science',
     'INDIAN_CONSTITUTION': 'Indian Constitution',
@@ -51,6 +51,6 @@ export const COURSE_MAPPING_BY_SEMESTER = {
     'CC': 'Cloud Computing',
     'PROGRAMMING_FOUNDATIONS': 'Data Structures',
     'BUILD_YOUR_OWN_STATIC_WEBSITE': 'Web Application Development 2',
-    'MATHEMATICS': 'Linear Algebra & Calculus',
+    'MATHEMATICS': 'Linear Algebra and Calculus',
   },
 };

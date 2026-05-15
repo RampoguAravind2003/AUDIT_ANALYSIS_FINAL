@@ -126,15 +126,15 @@ export const COURSE_TO_SUBJECT_MAPPING_SEM2 = {
   'iks': 'IKS - Indian Knowledge Systems',
 
   // LA&C - Linear Algebra & Calculus
-  'Linear Algebra & Calculus': 'LA&C - Linear Algebra & Calculus',
-  'Linear Algebra and Calculus': 'LA&C - Linear Algebra & Calculus',
-  'Linear Algebra': 'LA&C - Linear Algebra & Calculus',
-  'Calculus': 'LA&C - Linear Algebra & Calculus',
-  'Mathematics': 'LA&C - Linear Algebra & Calculus',
-  'Maths': 'LA&C - Linear Algebra & Calculus',
-  'mathematics': 'LA&C - Linear Algebra & Calculus',
-  'maths': 'LA&C - Linear Algebra & Calculus',
-  'math': 'LA&C - Linear Algebra & Calculus',
+  'Linear Algebra & Calculus': 'LA&C - Linear Algebra and Calculus',
+  'Linear Algebra and Calculus': 'LA&C - Linear Algebra and Calculus',
+  'Linear Algebra': 'LA&C - Linear Algebra and Calculus',
+  'Calculus': 'LA&C - Linear Algebra and Calculus',
+  'Mathematics': 'LA&C - Linear Algebra and Calculus',
+  'Maths': 'LA&C - Linear Algebra and Calculus',
+  'mathematics': 'LA&C - Linear Algebra and Calculus',
+  'maths': 'LA&C - Linear Algebra and Calculus',
+  'math': 'LA&C - Linear Algebra and Calculus',
   'la&c': 'LA&C - Linear Algebra & Calculus',
 
   // ENV - Environmental Studies

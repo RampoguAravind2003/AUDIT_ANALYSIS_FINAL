@@ -37,8 +37,8 @@
       "null_handling": "NULL shown as blank"
     },
     {
-      "column": "Expected Slots",
-      "description": "Total planned session slots for the full semester (Net NIAT Executional Slots)",
+      "column": "Delivery capacity slots",
+      "description": "Total delivery capacity for the university in the semester",
       "type": "metric",
       "source_table": "curriculum_ops_semester_subject_wise_portal_course_details",
       "source_column": "net_niat_executional_slots",
@@ -46,17 +46,26 @@
       "null_handling": "NULL treated as 0"
     },
     {
-      "column": "Expected Slots Till Date",
-      "description": "Pro-rated expected slots from semester start up to today, based on weekday pacing",
+      "column": "Planned content slots",
+      "description": "Total planned unique session slots across all subjects in the semester",
+      "type": "metric",
+      "source_table": "niat_and_intensive_offline_section_wise_daily_learning_schedule_details",
+      "source_column": "session_id",
+      "formula": "COUNT DISTINCT session_id across all subjects for the institute and semester",
+      "null_handling": "NULL treated as 0"
+    },
+    {
+      "column": "Planned content slots till date",
+      "description": "Pro-rated planned content slots from semester start up to today",
       "type": "metric",
       "source_table": "computed",
       "source_column": "calculated",
-      "formula": "calculate_expected_slots_to_date(start_date, end_date, total_slots): counts weekdays from start_date to min(today, end_date), divides by total semester weekdays, multiplies by total_slots",
+      "formula": "calculate_expected_slots_to_date(start_date, end_date, planned_content_slots): counts weekdays from start_date to min(today, end_date), divides by total semester weekdays, multiplies by planned_content_slots",
       "null_handling": "Returns 0 if start_date is None or total_slots is 0"
     },
     {
-      "column": "Actual Slots Delivered Till Date",
-      "description": "Number of sessions actually delivered up to today",
+      "column": "Planned slots delivered till date",
+      "description": "Number of planned slots actually delivered up to today",
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_progress_details",
       "source_column": "sessions_delivered_count",
@@ -65,21 +74,12 @@
     },
     {
       "column": "Deviation %",
-      "description": "Signed percentage deviation of actual delivery vs expected pace. Negative = behind schedule.",
+      "description": "Signed percentage deviation of actual delivery vs planned content pace. Negative = behind schedule.",
       "type": "metric",
       "source_table": "computed",
       "source_column": "calculated",
-      "formula": "((Actual Slots Delivered Till Date - Expected Slots Till Date) / Expected Slots Till Date) * 100",
-      "null_handling": "Returns None (shown as N/A) when Expected Slots Till Date is 0 or None"
-    },
-    {
-      "column": "Session Delivery %",
-      "description": "Percentage of expected-to-date slots that have been delivered",
-      "type": "metric",
-      "source_table": "computed",
-      "source_column": "calculated",
-      "formula": "(Actual Slots Delivered Till Date / Expected Slots Till Date) * 100",
-      "null_handling": "Returns None (shown as N/A) when Expected Slots Till Date is 0 or None"
+      "formula": "((Planned slots delivered till date - Planned content slots till date) / Planned content slots till date) * 100",
+      "null_handling": "Returns None (shown as N/A) when Planned content slots till date is 0 or None"
     },
     {
       "column": "Class Room Quizzes Attempt %",
@@ -87,7 +87,7 @@
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
       "source_column": "derived_unit_type, user_id",
-      "formula": "AVG across sections of (COUNT DISTINCT users with derived_unit_type='CLASSROOM_QUIZ' / total_students) * 100",
+      "formula": "(COUNT DISTINCT users with derived_unit_type='CLASSROOM_QUIZ' / total_students) * 100",
       "null_handling": "SAFE_DIVIDE used; returns NULL when total_students = 0"
     },
     {
@@ -101,21 +101,39 @@
       "null_handling": "SAFE_DIVIDE used; returns NULL when no classroom quiz attempts"
     },
     {
+      "column": "Lecture Delivery %",
+      "description": "Percentage of planned lecture sessions delivered/completed",
+      "type": "metric",
+      "source_table": "niat_and_intensive_offline_section_wise_daily_learning_schedule_details",
+      "source_column": "session_type, session_status, session_id",
+      "formula": "COUNT DISTINCT session_id where session_type='Lecture' and session_status in completed/delivered/conducted / COUNT DISTINCT session_id where session_type='Lecture' * 100",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when planned lecture sessions = 0"
+    },
+    {
       "column": "Practice Delivery %",
       "description": "Percentage of planned practice sessions that were delivered",
       "type": "metric",
-      "source_table": "curriculum_ops_niat_2025_users_week_wise_session_completion_adherence_details",
-      "source_column": "session_type, total_sessions_delivered, total_sessions_planned",
-      "formula": "(SUM of MAX(total_sessions_delivered) where session_type='PRACTICE' / SUM of MAX(total_sessions_planned) where session_type='PRACTICE') * 100",
-      "null_handling": "SAFE_DIVIDE used; MAX() per group applied before SUM() because columns are cumulative"
+      "source_table": "niat_and_intensive_offline_section_wise_daily_learning_schedule_details",
+      "source_column": "session_type, session_status, session_id",
+      "formula": "COUNT DISTINCT session_id where session_type='Practice' and session_status in completed/delivered/conducted / COUNT DISTINCT session_id where session_type='Practice' * 100",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when planned practice sessions = 0"
+    },
+    {
+      "column": "Exam Delivery %",
+      "description": "Percentage of planned exam sessions delivered/completed",
+      "type": "metric",
+      "source_table": "niat_and_intensive_offline_section_wise_daily_learning_schedule_details",
+      "source_column": "session_type, session_status, session_id",
+      "formula": "COUNT DISTINCT session_id where session_type='Exam' and session_status in completed/delivered/conducted / COUNT DISTINCT session_id where session_type='Exam' * 100",
+      "null_handling": "SAFE_DIVIDE used; returns NULL when planned exam sessions = 0"
     },
     {
       "column": "Practice Completion %",
-      "description": "Percentage of enrolled students who completed at least one practice unit",
+      "description": "Percentage of available practice sessions completed by users",
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_unlocked_units_completion_details",
       "source_column": "unit_type, unit_completion_status, user_id",
-      "formula": "AVG across sections of (COUNT DISTINCT users where unit_type='PRACTICE' AND unit_completion_status='COMPLETED' / total_students) * 100",
+      "formula": "COUNT DISTINCT completed user_id||unit_id pairs where unit_type='PRACTICE' / (total_students * COUNT DISTINCT practice unit_id) * 100",
       "null_handling": "SAFE_DIVIDE used; returns NULL when total_students = 0"
     },
     {
@@ -133,7 +151,7 @@
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
       "source_column": "derived_unit_type, user_id",
-      "formula": "AVG across sections of (COUNT DISTINCT users where derived_unit_type IN ('MODULE_QUIZ','DAILY_QUIZ','COURSE_QUIZ') / total_students) * 100",
+      "formula": "(COUNT DISTINCT users where derived_unit_type IN ('MODULE_QUIZ','DAILY_QUIZ','COURSE_QUIZ') / total_students) * 100",
       "null_handling": "SAFE_DIVIDE used; returns NULL when total_students = 0"
     },
     {
@@ -150,10 +168,10 @@
       "column": "Skill Assessment Conduction %",
       "description": "Percentage of planned skill assessment sessions that were conducted",
       "type": "metric",
-      "source_table": "curriculum_ops_niat_2025_users_week_wise_session_completion_adherence_details",
-      "source_column": "session_type, session_name_enum, total_sessions_delivered, total_sessions_planned",
-      "formula": "(SUM of MAX(delivered) where session_type='EXAM' AND LOWER(session_name_enum) CONTAINS 'skill' / SUM of MAX(planned) for same filter) * 100",
-      "null_handling": "SAFE_DIVIDE used; MAX() per group before SUM() because columns are cumulative"
+      "source_table": "curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores",
+      "source_column": "assessment_type, assessment_id",
+      "formula": "MIN(COUNT DISTINCT assessment_id where assessment_type='SKILL_ASSESSMENT', 5) / 5 * 100",
+      "null_handling": "Returns NULL when no skill assessment records exist"
     },
     {
       "column": "Skill Assessment Student Participation %",
@@ -250,13 +268,13 @@
   },
   "deviation_formula": {
     "description": "Signed deviation percentage. Negative means behind schedule.",
-    "formula": "((Actual Slots Delivered Till Date - Expected Slots Till Date) / Expected Slots Till Date) * 100",
+    "formula": "((Planned slots delivered till date - Planned content slots till date) / Planned content slots till date) * 100",
     "positive_meaning": "Ahead of schedule",
     "negative_meaning": "Behind schedule",
-    "null_condition": "Expected Slots Till Date = 0 or NULL"
+    "null_condition": "Planned content slots till date = 0 or NULL"
   },
   "pacing_formula": {
-    "description": "Pro-rated expected slots to today based on weekday count",
+    "description": "Pro-rated planned content slots to today based on weekday count",
     "function": "calculate_expected_slots_to_date(start_date, end_date, total_slots)",
     "formula": "total_slots * (weekdays_from_start_to_today / total_weekdays_in_semester)",
     "clamped": "today is clamped to min(today, end_date) so value never exceeds total_slots",
