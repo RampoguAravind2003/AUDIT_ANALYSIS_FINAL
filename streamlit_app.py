@@ -2483,6 +2483,62 @@ def fetch_sem_course_titles(batch: str, semester: str) -> dict:
 
 
 @st.cache_data(ttl=600, show_spinner=False)
+def fetch_university_subject_map(batch: str, semester: str, institute: str) -> dict:
+    """
+    Queries curriculum_ops_semester_subject_wise_portal_course_details to get the
+    exact subject → course mapping for a specific university and semester.
+
+    Returns {normalize_text(sem_course_title): subject_name} so that raw course
+    titles from session_adherence map directly to their canonical subject names
+    without relying on hardcoded COURSE_ALIAS_GROUPS or COURSE_MAPPING dicts.
+
+    Falls back gracefully if subject_name or institute_name columns don't exist.
+    """
+    portal_table_ref = get_config("BQ_PORTAL_COURSES_TABLE", DEFAULT_PORTAL_COURSES_TABLE)
+    portal_cols      = fetch_table_columns(portal_table_ref, DEFAULT_PORTAL_COURSES_TABLE)
+
+    portal_cid_col  = first_existing_column(portal_cols, ["portal_course_id", "course_id"])
+    portal_sem_col  = first_existing_column(portal_cols, ["semester_title", "semester_name", "semester"])
+    subject_col     = first_existing_column(portal_cols, ["subject_name", "subject_title", "subject"])
+    inst_col        = first_existing_column(portal_cols, ["institute_name", "university_name", "college_name", "institute"])
+
+    if not subject_col:
+        return {}   # table has no subject column — can't do dynamic mapping
+
+    sem_num = "1" if "1" in semester else ("2" if "2" in semester else "")
+
+    where = [f"TRIM(COALESCE(pc.sem_course_title, '')) != ''",
+             f"TRIM(COALESCE(pc.{bq_column(subject_col)}, '')) != ''"]
+
+    if inst_col:
+        where.append(f"LOWER(TRIM(COALESCE(pc.{bq_column(inst_col)}, ''))) = LOWER('{sql_escape(institute)}')")
+    if sem_num and portal_sem_col:
+        where.append(f"LOWER(COALESCE(pc.{bq_column(portal_sem_col)}, '')) LIKE '%semester {sem_num}%'")
+    if should_apply_batch_filter(batch):
+        where.append(f"LOWER(COALESCE(pc.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+
+    sql = f"""
+        SELECT DISTINCT
+          TRIM(pc.sem_course_title)                 AS sem_course_title,
+          TRIM(pc.{bq_column(subject_col)})         AS subject_name
+        FROM {format_table_ref(portal_table_ref, DEFAULT_PORTAL_COURSES_TABLE)} pc
+        WHERE {' AND '.join(where)}
+        ORDER BY sem_course_title
+    """
+    try:
+        df = run_query(sql)
+        result: dict[str, str] = {}
+        for _, row in df.iterrows():
+            course_title = str(row.get("sem_course_title") or "").strip()
+            subject_name = str(row.get("subject_name") or "").strip()
+            if course_title and subject_name:
+                result[normalize_text(course_title)] = subject_name
+        return result
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_portal_course_id_map(batch: str, semester: str) -> dict:
     """
     Returns two-way lookup dict for quiz pass fallback matching:
@@ -2970,13 +3026,24 @@ def get_roster_size_for_scope(data_df: pd.DataFrame, section: str):
     return float(scoped.groupby("section")["students"].max().sum())
 
 
-def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame, institute: str, section: str, semester: str, sem_course_titles: dict | None = None, quiz_pass_pct: float | None = None):
+def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame, institute: str, section: str, semester: str, sem_course_titles: dict | None = None, quiz_pass_pct: float | None = None, subject_map: dict | None = None):
     filtered = data_df[data_df["institute"] == institute].copy()
     if section:
         filtered = filtered[filtered["section"] == section]
     if filtered.empty:
         return None
-    filtered["normalized_course"] = filtered["course"].apply(lambda course: normalize_course_name(course, semester))
+    # subject_map: {normalize_text(sem_course_title): subject_name} from portal_courses table.
+    # Used as primary normalization — maps raw schedule titles to canonical subject names
+    # per university, without relying on hardcoded aliases.
+    _subject_map = subject_map or {}
+
+    def _normalize_course(course: str) -> str:
+        key = normalize_text(course)
+        if key in _subject_map:
+            return _subject_map[key]
+        return normalize_course_name(course, semester)   # fallback to static aliases
+
+    filtered["normalized_course"] = filtered["course"].apply(_normalize_course)
     # Map normalized course names to official sem_course_title where available
     sem_titles = sem_course_titles or {}
 
@@ -4776,7 +4843,8 @@ def main():
     ).sort_values(["Avg Delivery %", "University"], ascending=[False, True]).reset_index(drop=True)
 
     _quiz_pass_pct = (new_metrics.get("quiz", {}).get(selected_university) or {}).get("classroom_quiz_pass_pct")
-    university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles, quiz_pass_pct=_quiz_pass_pct)
+    _subject_map   = fetch_university_subject_map(batch, semester, selected_university)
+    university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles, quiz_pass_pct=_quiz_pass_pct, subject_map=_subject_map)
     if university_metrics is None:
         st.warning("No university data available for the current selection.")
         st.stop()
@@ -4992,7 +5060,8 @@ def main():
                 selected_section_label = st.selectbox("Section", section_options, key="selected_section_label")
             selected_section = "" if selected_section_label == "All Sections" else selected_section_label
             _quiz_pass_pct = (new_metrics.get("quiz", {}).get(selected_university) or {}).get("classroom_quiz_pass_pct")
-            university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles, quiz_pass_pct=_quiz_pass_pct)
+            _subject_map   = fetch_university_subject_map(batch, semester, selected_university)
+            university_metrics = build_university_metrics(semester_df, assessment_df, selected_university, selected_section, semester, sem_course_titles, quiz_pass_pct=_quiz_pass_pct, subject_map=_subject_map)
             if university_metrics is None:
                 st.warning("No university data available for the current selection.")
                 st.stop()
