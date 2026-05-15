@@ -1601,60 +1601,70 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
           GROUP BY institute
         ),
         quiz_totals AS (
-          -- Institute-level counts for classroom metrics and module participation.
-          -- Classroom pass % is computed at (student × quiz) level:
-          --   denominator = total unique student-quiz attempt pairs
+          -- All quiz attempt counts grouped by institute.
+          --
+          -- Classroom Quiz Attempt %:
+          --   numerator   = COUNT(DISTINCT user_id || quiz_id) — student×quiz pairs actually attempted
+          --   denominator = total_students × COUNT(DISTINCT classroom quiz_id)
+          --   e.g. 100 students, 3 quizzes → max 300 pairs; 150 attempted → 50%
+          --
+          -- Classroom Quiz Pass %:
           --   numerator   = pairs where best_attempt_percentage_score >= 80
-          -- This correctly penalises quizzes where many students failed,
-          -- unlike counting only distinct users who passed at least one quiz.
+          --   denominator = total attempted pairs (classroom_pairs_attempted)
+          --
+          -- Module Quiz Participation %:
+          --   numerator   = COUNT(DISTINCT user_id || quiz_id) for module quiz types
+          --   denominator = total_students × COUNT(DISTINCT module quiz_id)
           SELECT
             q.institute_name AS institute,
+            -- Classroom: unique student×quiz pairs attempted
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ',
               CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
-              AS classroom_attempted,
+              AS classroom_pairs_attempted,
+            -- Classroom: unique quiz IDs (needed for denominator)
+            COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ',
+              q.quiz_id, NULL))
+              AS classroom_quiz_count,
+            -- Classroom: pairs where score >= 80
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ'
               AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
               CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
               AS classroom_passed,
+            -- Module: unique quiz IDs (for denominator and conducted count)
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ'),
               q.quiz_id, NULL))
-              AS module_quiz_conducted,
+              AS module_quiz_count,
+            -- Module: unique student×quiz pairs attempted
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ'),
-              q.user_id, NULL))
-              AS module_attempted
+              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
+              AS module_pairs_attempted,
+            -- Module: pairs where score >= 80
+            COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
+              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
+              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
+              AS module_passed
           FROM {refs["quiz_attempts"]} q
           WHERE {where_str}
             AND q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
           GROUP BY q.institute_name
-        ),
-        module_quiz_pairs AS (
-          -- Module quiz pass % uses (student × quiz) pairs as the unit — same
-          -- approach as classroom, so each quiz is weighted by actual participation.
-          --   denominator = distinct (user_id, quiz_id) pairs attempted
-          --   numerator   = pairs where best_attempt_percentage_score >= 80
-          SELECT
-            q.institute_name AS institute,
-            COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
-              AS module_attempted,
-            COUNT(DISTINCT IF(SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
-                              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)),
-                              NULL))
-              AS module_passed
-          FROM {refs["quiz_attempts"]} q
-          WHERE {where_str}
-            AND q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
-          GROUP BY q.institute_name
         )
         SELECT
           qt.institute,
-          ROUND(SAFE_DIVIDE(qt.classroom_attempted, NULLIF(ir.total_students,      0)) * 100, 1) AS classroom_quiz_attempt_pct,
-          ROUND(SAFE_DIVIDE(qt.classroom_passed,    NULLIF(qt.classroom_attempted, 0)) * 100, 1) AS classroom_quiz_pass_pct,
-          qt.module_quiz_conducted,
-          ROUND(SAFE_DIVIDE(qt.module_attempted,    NULLIF(ir.total_students,      0)) * 100, 1) AS module_quiz_participation_pct,
-          ROUND(SAFE_DIVIDE(mqp.module_passed, NULLIF(mqp.module_attempted, 0)) * 100, 1)        AS module_quiz_pass_pct
+          -- Classroom Attempt %: (student×quiz pairs attempted) / (students × quiz count)
+          ROUND(SAFE_DIVIDE(qt.classroom_pairs_attempted,
+                            NULLIF(ir.total_students * qt.classroom_quiz_count, 0)) * 100, 1) AS classroom_quiz_attempt_pct,
+          -- Classroom Pass %: pairs passed / pairs attempted
+          ROUND(SAFE_DIVIDE(qt.classroom_passed,
+                            NULLIF(qt.classroom_pairs_attempted, 0)) * 100, 1)                AS classroom_quiz_pass_pct,
+          qt.module_quiz_count                                                                 AS module_quiz_conducted,
+          -- Module Participation %: (student×quiz pairs attempted) / (students × quiz count)
+          ROUND(SAFE_DIVIDE(qt.module_pairs_attempted,
+                            NULLIF(ir.total_students * qt.module_quiz_count, 0)) * 100, 1)    AS module_quiz_participation_pct,
+          -- Module Pass %: pairs passed / pairs attempted
+          ROUND(SAFE_DIVIDE(qt.module_passed,
+                            NULLIF(qt.module_pairs_attempted, 0)) * 100, 1)                   AS module_quiz_pass_pct
         FROM quiz_totals qt
-        LEFT JOIN institute_roster   ir  ON ir.institute  = qt.institute
-        LEFT JOIN module_quiz_pairs  mqp ON mqp.institute = qt.institute
+        LEFT JOIN institute_roster ir ON ir.institute = qt.institute
         ORDER BY qt.institute
     """
     try:
