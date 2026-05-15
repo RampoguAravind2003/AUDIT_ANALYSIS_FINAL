@@ -1627,26 +1627,23 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
             AND q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
           GROUP BY q.institute_name
         ),
-        module_per_quiz AS (
-          -- Per-quiz pass rate for each module/course quiz
+        module_quiz_pairs AS (
+          -- Module quiz pass % uses (student × quiz) pairs as the unit — same
+          -- approach as classroom, so each quiz is weighted by actual participation.
+          --   denominator = distinct (user_id, quiz_id) pairs attempted
+          --   numerator   = pairs where best_attempt_percentage_score >= 80
           SELECT
             q.institute_name AS institute,
-            q.quiz_id,
-            SAFE_DIVIDE(
-              COUNT(DISTINCT IF(SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
-                                q.user_id, NULL)),
-              NULLIF(COUNT(DISTINCT q.user_id), 0)
-            ) * 100 AS quiz_pass_pct
+            COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
+              AS module_attempted,
+            COUNT(DISTINCT IF(SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
+                              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)),
+                              NULL))
+              AS module_passed
           FROM {refs["quiz_attempts"]} q
           WHERE {where_str}
             AND q.derived_unit_type IN ('MODULE_QUIZ', 'DAILY_QUIZ', 'COURSE_QUIZ')
-          GROUP BY q.institute_name, q.quiz_id
-        ),
-        module_pass_avg AS (
-          -- Average of per-quiz pass rates per institute
-          SELECT institute, ROUND(AVG(quiz_pass_pct), 1) AS module_quiz_pass_pct
-          FROM module_per_quiz
-          GROUP BY institute
+          GROUP BY q.institute_name
         )
         SELECT
           qt.institute,
@@ -1654,10 +1651,10 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
           ROUND(SAFE_DIVIDE(qt.classroom_passed,    NULLIF(qt.classroom_attempted, 0)) * 100, 1) AS classroom_quiz_pass_pct,
           qt.module_quiz_conducted,
           ROUND(SAFE_DIVIDE(qt.module_attempted,    NULLIF(ir.total_students,      0)) * 100, 1) AS module_quiz_participation_pct,
-          mpa.module_quiz_pass_pct
+          ROUND(SAFE_DIVIDE(mqp.module_passed, NULLIF(mqp.module_attempted, 0)) * 100, 1)        AS module_quiz_pass_pct
         FROM quiz_totals qt
-        LEFT JOIN institute_roster ir  ON ir.institute  = qt.institute
-        LEFT JOIN module_pass_avg mpa  ON mpa.institute = qt.institute
+        LEFT JOIN institute_roster   ir  ON ir.institute  = qt.institute
+        LEFT JOIN module_quiz_pairs  mqp ON mqp.institute = qt.institute
         ORDER BY qt.institute
     """
     try:
