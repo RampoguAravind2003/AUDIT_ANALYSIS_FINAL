@@ -1131,15 +1131,19 @@ def build_university_overview_rows(
             "Practice Completion %": round(v, 1) if (v := _get(practice_data, name, "practice_completion_pct")) is not None
                 else (round(v2, 1) if (v2 := _get(progress_slots, name, "practice_completion_pct")) is not None else None),
             # ── Classroom Quizzes ─────────────────────────────────────────────
-            "Class Room Quizzes Attempt %": round(v, 1) if (v := _get(quiz_data, name, "classroom_quiz_attempt_pct")) is not None else None,
-            "Class Room Quizzes Pass %":    round(v, 1) if (v := _get(quiz_data, name, "classroom_quiz_pass_pct")) is not None else None,
+            "Class Room Quizzes Attempt %":    round(v, 1) if (v := _get(quiz_data, name, "classroom_quiz_attempt_pct"))    is not None else None,
+            "Class Room Quizzes Pass %":       round(v, 1) if (v := _get(quiz_data, name, "classroom_quiz_pass_pct"))       is not None else None,
+            "CR Quiz Pass % (≥60)":            round(v, 1) if (v := _get(quiz_data, name, "classroom_quiz_pass_60_pct"))    is not None else None,
+            "CR Quiz Pass % (>80)":            round(v, 1) if (v := _get(quiz_data, name, "classroom_quiz_pass_80_pct"))    is not None else None,
             "Lecture Delivery %":           round(v, 1) if (v := _get(delivery_data, name, "lecture_delivery_pct")) is not None else None,
             # ── Practice Delivery % (from session_adherence) ─────────────────
             "Practice Delivery %":          round(v, 1) if (v := _get(delivery_data, name, "practice_delivery_pct")) is not None else None,
             # ── Module Quiz ───────────────────────────────────────────────────
             "Module Quiz Conduction %":     round(v, 1) if (v := _get(delivery_data, name, "module_quiz_conduction_pct")) is not None else None,
             "Module Quiz Student Participation %": round(v, 1) if (v := _get(quiz_data, name, "module_quiz_participation_pct")) is not None else None,
-            "Module Quiz Pass %":           round(v, 1) if (v := _get(quiz_data, name, "module_quiz_pass_pct")) is not None else None,
+            "Module Quiz Pass %":            round(v, 1) if (v := _get(quiz_data, name, "module_quiz_pass_pct"))          is not None else None,
+            "Module Quiz Pass % (≥60)":      round(v, 1) if (v := _get(quiz_data, name, "module_quiz_pass_60_pct"))       is not None else None,
+            "Module Quiz Pass % (>80)":      round(v, 1) if (v := _get(quiz_data, name, "module_quiz_pass_80_pct"))       is not None else None,
             # ── Skill Assessment ──────────────────────────────────────────────
             "Skill Assessment Conduction %":    round(min((v / 5) * 100, 100.0), 1) if (v := _get(skill_graded_data, name, "skill_conducted")) is not None else None,
             "Skill Assessment Student Participation %": round(v, 1) if (v := _get(skill_graded_data, name, "skill_participation_pct")) is not None else None,
@@ -1708,7 +1712,7 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ',
               q.user_id, NULL))
               AS classroom_students_attempted,
-            -- Classroom: unique student×quiz pairs attempted, used only for pass %
+            -- Classroom: unique student×quiz pairs attempted
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ',
               CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
               AS classroom_pairs_attempted,
@@ -1716,11 +1720,28 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ',
               q.quiz_id, NULL))
               AS classroom_quiz_count,
-            -- Classroom: pairs where score >= 80
+            -- Classroom: pairs PASSED — use platform result if available, else score >= 80
             COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ'
-              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
+              AND (
+                UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
+                OR (
+                  (q.best_attempt_evaluation_result IS NULL
+                    OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
+                  AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                )
+              ),
               CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
               AS classroom_passed,
+            -- Classroom: pairs with score >= 60
+            COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ'
+              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 60,
+              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
+              AS classroom_passed_60,
+            -- Classroom: pairs with score > 80
+            COUNT(DISTINCT IF(q.derived_unit_type = 'CLASSROOM_QUIZ'
+              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) > 80,
+              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
+              AS classroom_passed_80,
             -- Module: unique quiz IDs (for denominator and conducted count)
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ'),
               q.quiz_id, NULL))
@@ -1729,15 +1750,32 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ'),
               q.user_id, NULL))
               AS module_students_attempted,
-            -- Module: unique student×quiz pairs attempted, used only for pass %
+            -- Module: unique student×quiz pairs attempted
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ'),
               CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
               AS module_pairs_attempted,
-            -- Module: pairs where score >= 80
+            -- Module: pairs PASSED — use platform result if available, else score >= 80
             COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
-              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80,
+              AND (
+                UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
+                OR (
+                  (q.best_attempt_evaluation_result IS NULL
+                    OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
+                  AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                )
+              ),
               CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
-              AS module_passed
+              AS module_passed,
+            -- Module: pairs with score >= 60
+            COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
+              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 60,
+              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
+              AS module_passed_60,
+            -- Module: pairs with score > 80
+            COUNT(DISTINCT IF(q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
+              AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) > 80,
+              CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)), NULL))
+              AS module_passed_80
           FROM {refs["quiz_attempts"]} q
           WHERE {where_str}
             AND q.derived_unit_type IN ('CLASSROOM_QUIZ', 'MODULE_QUIZ', 'COURSE_QUIZ')
@@ -1745,19 +1783,31 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
         )
         SELECT
           qt.institute,
-          -- Classroom Attempt %: students who attempted at least one classroom quiz / enrolled students
+          -- Classroom Attempt %
           ROUND(SAFE_DIVIDE(qt.classroom_students_attempted,
                             NULLIF(ir.total_students, 0)) * 100, 1)                           AS classroom_quiz_attempt_pct,
-          -- Classroom Pass %: pairs passed / pairs attempted
+          -- Classroom Pass % (platform best_attempt_evaluation_result = 'PASS')
           ROUND(SAFE_DIVIDE(qt.classroom_passed,
                             NULLIF(qt.classroom_pairs_attempted, 0)) * 100, 1)                AS classroom_quiz_pass_pct,
+          -- Classroom Pass % at >= 60 threshold
+          ROUND(SAFE_DIVIDE(qt.classroom_passed_60,
+                            NULLIF(qt.classroom_pairs_attempted, 0)) * 100, 1)                AS classroom_quiz_pass_60_pct,
+          -- Classroom Pass % at > 80 threshold
+          ROUND(SAFE_DIVIDE(qt.classroom_passed_80,
+                            NULLIF(qt.classroom_pairs_attempted, 0)) * 100, 1)                AS classroom_quiz_pass_80_pct,
           qt.module_quiz_count                                                                 AS module_quiz_conducted,
-          -- Module Participation %: students who attempted at least one module quiz / enrolled students
+          -- Module Participation %
           ROUND(SAFE_DIVIDE(qt.module_students_attempted,
                             NULLIF(ir.total_students, 0)) * 100, 1)                           AS module_quiz_participation_pct,
-          -- Module Pass %: pairs passed / pairs attempted
+          -- Module Pass % (platform best_attempt_evaluation_result = 'PASS')
           ROUND(SAFE_DIVIDE(qt.module_passed,
-                            NULLIF(qt.module_pairs_attempted, 0)) * 100, 1)                   AS module_quiz_pass_pct
+                            NULLIF(qt.module_pairs_attempted, 0)) * 100, 1)                   AS module_quiz_pass_pct,
+          -- Module Pass % at >= 60 threshold
+          ROUND(SAFE_DIVIDE(qt.module_passed_60,
+                            NULLIF(qt.module_pairs_attempted, 0)) * 100, 1)                   AS module_quiz_pass_60_pct,
+          -- Module Pass % at > 80 threshold
+          ROUND(SAFE_DIVIDE(qt.module_passed_80,
+                            NULLIF(qt.module_pairs_attempted, 0)) * 100, 1)                   AS module_quiz_pass_80_pct
         FROM quiz_totals qt
         LEFT JOIN institute_roster ir ON ir.institute = qt.institute
         ORDER BY qt.institute
@@ -1766,8 +1816,10 @@ def fetch_quiz_metrics(batch: str, semester: str) -> pd.DataFrame:
         return run_query(sql)
     except Exception as e:
         st.error(f"fetch_quiz_metrics error: {e}")
-        return pd.DataFrame(columns=["institute", "classroom_quiz_attempt_pct", "classroom_quiz_pass_pct",
-                                     "module_quiz_conducted", "module_quiz_participation_pct", "module_quiz_pass_pct"])
+        return pd.DataFrame(columns=["institute", "classroom_quiz_attempt_pct",
+                                     "classroom_quiz_pass_pct", "classroom_quiz_pass_60_pct", "classroom_quiz_pass_80_pct",
+                                     "module_quiz_conducted", "module_quiz_participation_pct",
+                                     "module_quiz_pass_pct", "module_quiz_pass_60_pct", "module_quiz_pass_80_pct"])
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -5444,8 +5496,10 @@ def main():
             )
             _overview_pct_cols = [
                 "Class Room Quizzes Attempt %", "Class Room Quizzes Pass %",
+                "CR Quiz Pass % (≥60)", "CR Quiz Pass % (>80)",
                 "Lecture Delivery %", "Practice Delivery %", "Practice Completion %",
-                "Module Quiz Conduction %", "Module Quiz Student Participation %", "Module Quiz Pass %",
+                "Module Quiz Conduction %", "Module Quiz Student Participation %",
+                "Module Quiz Pass %", "Module Quiz Pass % (≥60)", "Module Quiz Pass % (>80)",
                 "Skill Assessment Conduction %", "Skill Assessment Student Participation %", "Skill Assessment Pass %",
                 "Academic Assessments Attempt %", "Academic Assessments Pass %",
             ]
@@ -5468,13 +5522,17 @@ def main():
                     "Planned slots delivered till date":     st.column_config.NumberColumn("Delivered Till Date", format="%.0f", width="small"),
                     "Deviation %":                           st.column_config.NumberColumn("Deviation %", format="%.1f%%", help="(Planned slots delivered till date − Planned content slots till date) / Planned content slots till date × 100. Negative = behind schedule."),
                     "Class Room Quizzes Attempt %":          st.column_config.NumberColumn("CR Quiz Attempt %", format="%.1f%%", help="Students who attempted classroom quizzes / total enrolled × 100"),
-                    "Class Room Quizzes Pass %":             st.column_config.NumberColumn("CR Quiz Pass %", format="%.1f%%", help="Students scored ≥80% / students who attempted classroom quizzes × 100"),
+                    "Class Room Quizzes Pass %":             st.column_config.NumberColumn("CR Quiz Pass %", format="%.1f%%", help="Pairs where best_attempt_evaluation_result = 'PASS' / total attempted pairs × 100"),
+                    "CR Quiz Pass % (≥60)":                  st.column_config.NumberColumn("CR Quiz Pass % (≥60)", format="%.1f%%", help="Classroom quiz pairs with score ≥ 60% / total attempted pairs × 100"),
+                    "CR Quiz Pass % (>80)":                  st.column_config.NumberColumn("CR Quiz Pass % (>80)", format="%.1f%%", help="Classroom quiz pairs with score > 80% / total attempted pairs × 100"),
                     "Lecture Delivery %":                    st.column_config.NumberColumn("Lecture Delivery %", format="%.1f%%", help="Delivered lecture sessions / planned lecture sessions × 100"),
                     "Practice Delivery %":                   st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%", help="Practice units delivered / planned practice sessions × 100"),
                     "Practice Completion %":                 st.column_config.NumberColumn("Practice Completion %", format="%.1f%%", help="Completed student×practice sessions / available student×practice sessions × 100"),
                     "Module Quiz Conduction %":              st.column_config.NumberColumn("Module Quiz Conduction %", format="%.1f%%", help="Module quizzes conducted / planned module quizzes × 100"),
                     "Module Quiz Student Participation %":   st.column_config.NumberColumn("Module Quiz Participation %", format="%.1f%%", help="Students who attempted module quiz / total enrolled × 100"),
-                    "Module Quiz Pass %":                    st.column_config.NumberColumn("Module Quiz Pass %", format="%.1f%%", help="Passed student-quiz attempts / attempted student-quiz attempts × 100"),
+                    "Module Quiz Pass %":                    st.column_config.NumberColumn("Module Quiz Pass %", format="%.1f%%", help="Pairs where best_attempt_evaluation_result = 'PASS' / total attempted pairs × 100"),
+                    "Module Quiz Pass % (≥60)":              st.column_config.NumberColumn("Module Quiz Pass % (≥60)", format="%.1f%%", help="Module quiz pairs with score ≥ 60% / total attempted pairs × 100"),
+                    "Module Quiz Pass % (>80)":              st.column_config.NumberColumn("Module Quiz Pass % (>80)", format="%.1f%%", help="Module quiz pairs with score > 80% / total attempted pairs × 100"),
                     "Skill Assessment Conduction %":         st.column_config.NumberColumn("Skill Conduction %", format="%.1f%%", help="COUNT DISTINCT assessment dates from skill_graded table / 5 × 100  (5 = total expected skill assessment dates)"),
                     "Skill Assessment Student Participation %": st.column_config.NumberColumn("Skill Participation %", format="%.1f%%", help="Students attempted skill assessment / total enrolled × 100"),
                     "Skill Assessment Pass %":               st.column_config.NumberColumn("Skill Pass %", format="%.1f%%", help="Average of per-course Skill Pass % from course matrix (avg pass_count / participation per course, averaged across all courses)"),
