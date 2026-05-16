@@ -3,3 +3,4 @@ pandas>=2.2.0
 google-cloud-bigquery>=3.25.0
 google-auth>=2.35.0
 db-dtypes
+openai>=1.30.0
