@@ -120,6 +120,49 @@ ALLOTTED_HOURS_BY_SEMESTER = {
     },
 }
 
+PLANNED_CONTENT_SLOTS_OVERRIDES = {
+    "Semester 1": {
+        "Sanjay Ghodawat University":                  439,
+        "Sanjay Godhawat University":                  439,
+        "SGU":                                         439,
+        "Vivekananda global University":               588,
+        "VGU":                                         588,
+        "Yenepoya University":                         514,
+        "Yenapoya University":                         514,
+        "Yenepoya":                                    514,
+        "S-Vyasa":                                     593,
+        "S-VYASA":                                     593,
+        "A Dy Patil University":                       531,
+        "A Dy Patil":                                  531,
+        "Takshashila University":                      466,
+        "Takshasila University":                       466,
+        "Takshashila":                                 466,
+        "Noida International":                         494,
+        "Noida International University":              494,
+        "NIU":                                         494,
+        "Annamacharya University":                     512,
+        "Annamacharya":                                512,
+        "NRI Institute of Technology":                 425,
+        "NRI":                                         425,
+        "MRV University":                              540,
+        "MRV":                                         540,
+        "Malla Reddy Vishwavidyapeeth":                540,
+        "CDU":                                         451,
+        "Chaitanya Deemed-to-be University":           451,
+        "Crescent University":                         492,
+        "Crescent":                                    492,
+        "Chalapathy":                                  366,
+        "Chalapathy (CITY)":                           366,
+        "Chalapathi":                                  366,
+        "NSRIT":                                       603,
+        "NSRIT University":                            603,
+        "Aurora":                                      237,
+        "Aurora University":                           237,
+        "Academy of Maritime education & Technology":  339,
+        "AMET":                                        339,
+    },
+}
+
 SEMESTER_DATES_BY_SEMESTER = {
     "Semester 1": {
         "A Dy Patil University": {"start": "Aug 4, 2025", "end": "Dec 15, 2025"},
@@ -1472,6 +1515,15 @@ def fetch_semester_data(batch: str, semester: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_planned_content_slots(batch: str, semester: str) -> pd.DataFrame:
+    # If hardcoded overrides exist for this semester, use them directly
+    overrides = PLANNED_CONTENT_SLOTS_OVERRIDES.get(semester)
+    if overrides:
+        rows = [
+            {"institute": inst, "planned_content_slots": slots}
+            for inst, slots in overrides.items()
+        ]
+        return pd.DataFrame(rows)
+
     refs = get_table_refs()
     where_clauses = ["TRIM(COALESCE(s.institute_name, '')) != ''"]
     window_clause = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
@@ -4880,6 +4932,197 @@ def render_metric_row(items):
             st.markdown("<div class='metric-row-gap'></div>", unsafe_allow_html=True)
 
 
+def render_copilot(batch: str, semester: str) -> None:
+    """Render the AI Copilot chat interface."""
+    from copilot.agent import run_agent_streaming
+
+    api_key = get_config("OPENROUTER_API_KEY", "")
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    st.markdown(
+        """
+        <div class="hero-card" style="margin-bottom:20px">
+            <div class="hero-eyebrow">AI-Powered</div>
+            <h1 class="hero-title" style="font-size:1.6rem">NIAT Academic Operations Copilot</h1>
+            <div class="hero-subtitle">Ask anything about delivery metrics, quiz performance, skill assessments,
+            deviations, or trigger escalation workflows — all via natural language.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── API key gate ──────────────────────────────────────────────────────────
+    if not api_key:
+        st.error("**OPENROUTER_API_KEY not configured.** Add the following to `.streamlit/secrets.toml`:")
+        st.code('OPENROUTER_API_KEY = "sk-or-v1-..."', language="toml")
+        st.info("Get your free API key from openrouter.ai/keys — the Copilot uses Claude Sonnet via OpenRouter.")
+        return
+
+    # ── Capability chips ──────────────────────────────────────────────────────
+    st.markdown(
+        """
+        <div style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px'>
+          <span style='background:#ede9fe;color:#4f46e5;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>📊 Query Metrics</span>
+          <span style='background:#dcfce7;color:#15803d;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>⚠️ Detect Deviations</span>
+          <span style='background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>🔔 Escalation Emails</span>
+          <span style='background:#e0f2fe;color:#0369a1;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>🎯 KPI Threshold Check</span>
+          <span style='background:#fce7f3;color:#9d174d;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>📋 Generate Reports</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── Session state ─────────────────────────────────────────────────────────
+    if "copilot_display" not in st.session_state:
+        st.session_state["copilot_display"] = []
+
+    # ── Quick-start suggestions (shown only when chat is empty) ───────────────
+    if not st.session_state["copilot_display"]:
+        st.markdown("<div style='font-size:0.78rem;color:#64748b;margin-bottom:8px;font-weight:600'>Try asking:</div>", unsafe_allow_html=True)
+        suggestions = [
+            f"Which universities in {batch} {semester} have lecture delivery below 75%?",
+            f"Show me the top 10 universities by avg delivery % for {semester}",
+            f"Which universities have skill assessment conduction below 60% in {semester}?",
+            f"Show deviation % for all universities in {batch} {semester}",
+            "Check KPI thresholds for a university and draft an escalation email",
+        ]
+        cols = st.columns(2)
+        for i, suggestion in enumerate(suggestions):
+            col = cols[i % 2]
+            if col.button(suggestion, key=f"sugg_{i}", use_container_width=True):
+                st.session_state["copilot_pending"] = suggestion
+                st.rerun()
+
+    # ── Render existing messages ──────────────────────────────────────────────
+    for msg in st.session_state["copilot_display"]:
+        with st.chat_message(msg["role"], avatar="🤖" if msg["role"] == "assistant" else None):
+            st.markdown(msg["content"])
+            # Show tool call log if present
+            if msg["role"] == "assistant" and msg.get("tool_log"):
+                with st.expander(f"🔧 {len(msg['tool_log'])} tool call(s) made", expanded=False):
+                    for tc in msg["tool_log"]:
+                        st.markdown(f"**`{tc['tool']}`**")
+                        if tc["input"]:
+                            st.json(tc["input"])
+                        result = tc.get("result", {})
+                        if "error" in result:
+                            st.error(result["error"])
+                        elif "data" in result:
+                            import pandas as _pd
+                            try:
+                                _df = _pd.DataFrame(result["data"])
+                                st.dataframe(_df, use_container_width=True, hide_index=True)
+                                if result.get("truncated"):
+                                    st.caption("Results truncated to 100 rows.")
+                            except Exception:
+                                st.json(result)
+                        else:
+                            st.json(result)
+
+    # ── Handle pending suggestion click ──────────────────────────────────────
+    pending = st.session_state.pop("copilot_pending", None)
+
+    # ── Chat input ────────────────────────────────────────────────────────────
+    user_input = st.chat_input("Ask about operations, KPIs, deviations, or request an escalation email…")
+    prompt = pending or user_input
+    if not prompt:
+        # Clear chat button
+        if st.session_state["copilot_display"]:
+            if st.button("🗑️ Clear conversation", key="clear_copilot"):
+                st.session_state["copilot_display"] = []
+                st.rerun()
+        return
+
+    # Add user message to display
+    st.session_state["copilot_display"].append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # ── Run agent (streaming events) ──────────────────────────────────────────
+    bq_client = get_bigquery_client()
+    history_for_agent = [
+        m for m in st.session_state["copilot_display"][:-1]
+        if m["role"] in ("user", "assistant") and isinstance(m.get("content"), str)
+    ]
+
+    tool_log: list[dict] = []
+    final_text = ""
+
+    with st.chat_message("assistant", avatar="🤖"):
+        status_placeholder = st.empty()
+        response_placeholder = st.empty()
+        accumulated_text = ""
+
+        try:
+            for event in run_agent_streaming(
+                display_history=history_for_agent,
+                user_prompt=prompt,
+                bq_client=bq_client,
+                api_key=api_key,
+                batch=batch,
+                semester=semester,
+            ):
+                etype = event.get("type")
+
+                if etype == "tool_start":
+                    tool_name = event["tool"]
+                    nice = {
+                        "run_bigquery_sql": "🔍 Querying BigQuery…",
+                        "list_tables": "📋 Listing tables…",
+                        "get_table_schema": "🗂️ Fetching schema…",
+                        "check_kpi_thresholds": "📊 Checking KPI thresholds…",
+                        "send_escalation_email": "📧 Sending escalation email…",
+                        "build_escalation_report": "📝 Building escalation report…",
+                    }.get(tool_name, f"⚙️ Running {tool_name}…")
+                    status_placeholder.info(nice)
+                    tool_log.append({"tool": tool_name, "input": event.get("input", {}), "result": {}})
+
+                elif etype == "tool_result":
+                    # Update the last log entry with the result
+                    tool_name = event["tool"]
+                    if tool_log and tool_log[-1]["tool"] == tool_name:
+                        tool_log[-1]["result"] = event.get("result", {})
+                    status_placeholder.empty()
+
+                elif etype == "done":
+                    final_text = event.get("text", "")
+                    status_placeholder.empty()
+                    response_placeholder.markdown(final_text)
+
+                elif etype == "error":
+                    status_placeholder.empty()
+                    response_placeholder.error(f"Error: {event.get('message')}")
+                    final_text = f"⚠️ Error: {event.get('message')}"
+
+        except Exception as exc:
+            status_placeholder.empty()
+            response_placeholder.error(f"Copilot error: {exc}")
+            final_text = f"⚠️ Copilot encountered an error: {exc}"
+
+        # Show tool call summary inline
+        if tool_log:
+            with st.expander(f"🔧 {len(tool_log)} tool call(s) made", expanded=False):
+                for tc in tool_log:
+                    st.markdown(f"**`{tc['tool']}`**")
+                    result = tc.get("result", {})
+                    if "data" in result:
+                        import pandas as _pd2
+                        try:
+                            _df2 = _pd2.DataFrame(result["data"])
+                            st.dataframe(_df2, use_container_width=True, hide_index=True)
+                        except Exception:
+                            st.json(result)
+                    elif result:
+                        st.json(result)
+
+    # Persist assistant response
+    st.session_state["copilot_display"].append({
+        "role": "assistant",
+        "content": final_text,
+        "tool_log": tool_log,
+    })
+
+
 def main():
     st.set_page_config(page_title="NIAT Analytics Streamlit", layout="wide")
     inject_custom_css()
@@ -4900,6 +5143,15 @@ def main():
             unsafe_allow_html=True,
         )
         st.markdown("<hr style='margin:0 0 16px 0;border:none;border-top:1px solid rgba(165,180,252,0.15)'>", unsafe_allow_html=True)
+
+        # ── Mode toggle ───────────────────────────────────────────────────────
+        _mode = st.session_state.get("app_mode", "dashboard")
+        _copilot_active = _mode == "copilot"
+        _mode_label = "📊 Back to Dashboard" if _copilot_active else "🤖 AI Copilot"
+        if st.button(_mode_label, use_container_width=True, key="mode_toggle"):
+            st.session_state["app_mode"] = "dashboard" if _copilot_active else "copilot"
+            st.rerun()
+        st.markdown("<hr style='margin:12px 0 16px 0;border:none;border-top:1px solid rgba(165,180,252,0.15)'>", unsafe_allow_html=True)
 
         st.markdown("<div style='font-size:0.67rem;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px'>Filters</div>", unsafe_allow_html=True)
         batch = st.selectbox("Batch", ["NIAT 24", "NIAT 25", "NIAT 26"], index=1, label_visibility="collapsed" if False else "visible")
@@ -4933,6 +5185,11 @@ def main():
 
         st.markdown("<hr style='margin:14px 0;border:none;border-top:1px solid rgba(165,180,252,0.15)'>", unsafe_allow_html=True)
         load_clicked = st.button("↺  Refresh Data", type="primary", use_container_width=True)
+
+    # ── Copilot mode — skip dashboard entirely ────────────────────────────────
+    if st.session_state.get("app_mode") == "copilot":
+        render_copilot(batch, semester)
+        return
 
     if load_clicked or "semester_df" not in st.session_state or "planned_slots_df" not in st.session_state or st.session_state.get("batch") != batch or st.session_state.get("semester") != semester:
         with st.spinner("Fetching data from BigQuery..."):
