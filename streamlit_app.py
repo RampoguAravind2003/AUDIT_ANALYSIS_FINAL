@@ -3370,15 +3370,22 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
     # before alias-based fallback.
     _subject_map = subject_map or {}
 
+    # Map normalized course names to official sem_course_title where available
+    # Defined before _normalize_course so it can be used as a dynamic BQ-based alias lookup.
+    sem_titles = sem_course_titles or {}
+
     def _normalize_course(course: str) -> str:
         key = normalize_text(course)
+        # 1. subject_map (portal_courses): normalize_text(sem_course_title) → subject_name
         if key in _subject_map:
             return _subject_map[key]
-        return normalize_course_name(course, semester)   # fallback to static aliases
+        # 2. sem_titles (BQ content→sem_course_title): covers any semester without hardcoded aliases
+        if key in sem_titles:
+            return sem_titles[key]
+        # 3. static alias groups (Semester 1 & 2 hardcoded fallback)
+        return normalize_course_name(course, semester)
 
     filtered["normalized_course"] = filtered["course"].apply(_normalize_course)
-    # Map normalized course names to official sem_course_title where available
-    sem_titles = sem_course_titles or {}
 
     def _display_course(name: str) -> str:
         return sem_titles.get(normalize_text(name), name)
@@ -3455,7 +3462,8 @@ def filter_course_table(course_table: pd.DataFrame, semester: str, institute: st
     filtered = course_table.copy()
     excluded_courses = {
         normalize_text(course)
-        for course in NON_CORE_COURSES_BY_SEMESTER.get(semester, set())
+        for course in (NON_CORE_COURSES_BY_SEMESTER.get(semester)
+                       or NON_CORE_COURSES_BY_SEMESTER.get("Semester 2", set()))
     }
     if excluded_courses:
         filtered = filtered[~filtered["Course"].map(lambda value: normalize_text(value) in excluded_courses)].copy()
@@ -5747,7 +5755,12 @@ def main():
                     _cval = None
                 if _ct:
                     _completion_course_lookup[normalize_text(_ct)] = _cval
-                    _canonical_key = normalize_text(normalize_course_name(_ct, semester))
+                    # Use BQ sem_course_titles first for dynamic resolution, fallback to static aliases
+                    _canonical_key = normalize_text(
+                        sem_course_titles.get(normalize_text(_ct))
+                        or sem_course_titles.get(normalize_text(normalize_course_name(_ct, semester)))
+                        or normalize_course_name(_ct, semester)
+                    )
                     if _cval is not None:
                         _completion_by_canonical.setdefault(_canonical_key, []).append(_cval)
                 if _pid:
@@ -5769,7 +5782,11 @@ def main():
                     _qval = None
                 if _qt:
                     _quiz_pass_course_lookup[normalize_text(_qt)] = _qval
-                    _qcanon = normalize_text(normalize_course_name(_qt, semester))
+                    _qcanon = normalize_text(
+                        sem_course_titles.get(normalize_text(_qt))
+                        or sem_course_titles.get(normalize_text(normalize_course_name(_qt, semester)))
+                        or normalize_course_name(_qt, semester)
+                    )
                     if _qval is not None:
                         _quiz_pass_by_canonical.setdefault(_qcanon, []).append(_qval)
 
