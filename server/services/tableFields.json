@@ -92,12 +92,12 @@
     },
     {
       "column": "Class Room Quizzes Pass %",
-      "description": "Percentage of students who attempted classroom quizzes and passed (best_attempt_evaluation_result = 'PASS')",
+      "description": "Percentage of classroom quiz attempts with best attempt score >= 80",
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
       "source_column": "derived_unit_type, best_attempt_evaluation_result, user_id",
-      "formula": "AVG across sections of (COUNT DISTINCT users where derived_unit_type='CLASSROOM_QUIZ' AND best_attempt_evaluation_result='PASS' / COUNT DISTINCT users who attempted classroom quiz) * 100",
-      "pass_field": "best_attempt_evaluation_result = 'PASS'",
+      "formula": "(COUNT DISTINCT user_id+quiz_id pairs where derived_unit_type='CLASSROOM_QUIZ' AND best_attempt_percentage_score >= 80 / COUNT DISTINCT user_id+quiz_id pairs where derived_unit_type='CLASSROOM_QUIZ') * 100",
+      "pass_field": "best_attempt_percentage_score >= 80",
       "null_handling": "SAFE_DIVIDE used; returns NULL when no classroom quiz attempts"
     },
     {
@@ -142,26 +142,26 @@
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_week_wise_session_completion_adherence_details",
       "source_column": "session_type, session_name_enum, total_sessions_delivered, total_sessions_planned",
-      "formula": "(SUM of MAX(delivered) where session_type='EXAM' AND LOWER(session_name_enum) CONTAINS 'quiz' / SUM of MAX(planned) for same filter) * 100",
+      "formula": "(SUM of MAX(delivered) where session_type='EXAM' AND LOWER(session_name_enum) matches REGEXP \\bmodule\\b OR \\bcourse[\\s_-]+quiz\\b / SUM of MAX(planned) for same filter) * 100 — matches 'module quiz', 'module exam', 'module 1', 'course quiz', etc.",
       "null_handling": "SAFE_DIVIDE used; MAX() per group before SUM() because columns are cumulative"
     },
     {
       "column": "Module Quiz Student Participation %",
-      "description": "Percentage of enrolled students who attempted at least one module quiz (MODULE_QUIZ, DAILY_QUIZ, or COURSE_QUIZ)",
+      "description": "Percentage of enrolled students who attempted at least one module quiz (MODULE_QUIZ or COURSE_QUIZ)",
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
       "source_column": "derived_unit_type, user_id",
-      "formula": "(COUNT DISTINCT users where derived_unit_type IN ('MODULE_QUIZ','DAILY_QUIZ','COURSE_QUIZ') / total_students) * 100",
+      "formula": "(COUNT DISTINCT users where derived_unit_type IN ('MODULE_QUIZ','COURSE_QUIZ') / total_students) * 100",
       "null_handling": "SAFE_DIVIDE used; returns NULL when total_students = 0"
     },
     {
       "column": "Module Quiz Pass %",
-      "description": "Percentage of students who attempted module quizzes and passed (best_attempt_evaluation_result = 'PASS')",
+      "description": "Percentage of module/course quiz attempts with best attempt score >= 80",
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
       "source_column": "derived_unit_type, best_attempt_evaluation_result, user_id",
-      "formula": "AVG across sections of (COUNT DISTINCT users where derived_unit_type IN ('MODULE_QUIZ','DAILY_QUIZ','COURSE_QUIZ') AND best_attempt_evaluation_result='PASS' / COUNT DISTINCT users who attempted module quiz) * 100",
-      "pass_field": "best_attempt_evaluation_result = 'PASS'",
+      "formula": "(COUNT DISTINCT user_id+quiz_id pairs where derived_unit_type IN ('MODULE_QUIZ','COURSE_QUIZ') AND best_attempt_percentage_score >= 80 / COUNT DISTINCT user_id+quiz_id pairs where derived_unit_type IN ('MODULE_QUIZ','COURSE_QUIZ')) * 100",
+      "pass_field": "best_attempt_percentage_score >= 80",
       "null_handling": "SAFE_DIVIDE used; returns NULL when no module quiz attempts"
     },
     {
@@ -170,8 +170,8 @@
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores",
       "source_column": "assessment_type, assessment_id",
-      "formula": "MIN(COUNT DISTINCT assessment_id where assessment_type='SKILL_ASSESSMENT', 5) / 5 * 100",
-      "null_handling": "Returns NULL when no skill assessment records exist"
+      "formula": "(SUM of MAX(delivered) where session_type='EXAM' AND LOWER(session_name_enum) contains 'skill' / SUM of MAX(planned) for same filter) * 100 — uses session_adherence actual planned vs delivered counts",
+      "null_handling": "Returns NULL when no skill assessment sessions are planned in session_adherence"
     },
     {
       "column": "Skill Assessment Student Participation %",
@@ -188,7 +188,7 @@
       "type": "metric",
       "source_table": "curriculum_ops_niat_2025_users_batch_wise_skill_and_graded_assessment_scores",
       "source_column": "assessment_type, section_evaluation_result, user_id",
-      "formula": "AVG across sections of (COUNT DISTINCT users where assessment_type='SKILL_ASSESSMENT' AND section_evaluation_result='PASSED' / COUNT DISTINCT users who attempted skill assessment) * 100",
+      "formula": "(COUNT DISTINCT user_id+assessment_id pairs where assessment_type='SKILL_ASSESSMENT' AND section_evaluation_result contains PASS / COUNT DISTINCT user_id+assessment_id pairs where assessment_type='SKILL_ASSESSMENT') * 100",
       "pass_field": "section_evaluation_result = 'PASSED'",
       "null_handling": "SAFE_DIVIDE used; returns NULL when no skill assessment attempts"
     },
@@ -235,7 +235,7 @@
       "default_name": "curriculum_ops_niat_2025_users_batch_wise_quiz_best_attempts_and_completion_details",
       "role": "Quiz attempt records — one row per user per quiz, with type and best attempt result",
       "key_columns": ["institute_name", "section_name", "user_id", "quiz_id", "derived_unit_type", "best_attempt_evaluation_result", "batch_name", "semester_name", "session_date"],
-      "notes": "derived_unit_type values: CLASSROOM_QUIZ (classroom quiz), MODULE_QUIZ / DAILY_QUIZ / COURSE_QUIZ (all treated as module quiz). best_attempt_evaluation_result = 'PASS' or 'FAIL'."
+      "notes": "derived_unit_type values: CLASSROOM_QUIZ (classroom quiz), MODULE_QUIZ / COURSE_QUIZ (treated as module quiz in overview metrics), DAILY_QUIZ (available in drilldowns but excluded from module quiz overview metrics). best_attempt_evaluation_result = 'PASS' or 'FAIL'."
     },
     {
       "table_key": "unlocked_units",
@@ -255,9 +255,9 @@
   "quiz_classification": {
     "column": "derived_unit_type",
     "classroom_quiz": ["CLASSROOM_QUIZ"],
-    "module_quiz": ["MODULE_QUIZ", "DAILY_QUIZ", "COURSE_QUIZ"],
-    "pass_field": "best_attempt_evaluation_result",
-    "pass_value": "PASS"
+    "module_quiz": ["MODULE_QUIZ", "COURSE_QUIZ"],
+    "pass_field": "best_attempt_percentage_score",
+    "pass_value": ">= 80"
   },
   "assessment_classification": {
     "skill_assessment_type": "SKILL_ASSESSMENT",
