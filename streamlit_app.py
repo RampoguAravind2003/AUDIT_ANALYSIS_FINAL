@@ -2746,6 +2746,10 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
             COUNT(DISTINCT IF(sg.assessment_type = 'SKILL_ASSESSMENT'
               AND UPPER(TRIM(COALESCE(sg.section_evaluation_result, ''))) LIKE '%PASS%',
               CONCAT(CAST(sg.user_id AS STRING), '||', CAST(sg.assessment_id AS STRING)), NULL)) AS skill_pairs_passed,
+            -- Distinct students who passed at least one skill assessment (for pass %)
+            COUNT(DISTINCT IF(sg.assessment_type = 'SKILL_ASSESSMENT'
+              AND UPPER(TRIM(COALESCE(sg.section_evaluation_result, ''))) LIKE '%PASS%',
+              sg.user_id, NULL)) AS skill_students_passed,
             COUNT(DISTINCT IF(sg.assessment_type = 'GRADED_ASSESSMENT',
               sg.user_id, NULL))                                                                AS academic_students_attempted,
             COUNT(DISTINCT IF(sg.assessment_type = 'GRADED_ASSESSMENT',
@@ -2813,11 +2817,18 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
           COALESCE(idc.date_count, 0) AS skill_conducted,
           -- Skill Assessment Participation %: unique users attempted / total enrolled
           ROUND(SAFE_DIVIDE(st.skill_students_attempted, NULLIF(ir.total_students, 0)) * 100, 1) AS skill_participation_pct,
-          -- Skill Assessment Pass %: score-based (>= 80%) first; fallback to evaluation_result when no topic scores
+          -- Skill Assessment Pass %: students who passed / total enrolled (always 0-100%)
+          -- Primary:  score-based from assessment_topic (distinct students >= 80%)
+          -- Fallback: evaluation_result from skill_graded (distinct students with PASSED result)
+          -- Both use total_students as denominator (pass % = passed students / enrolled).
           ROUND(
             COALESCE(
-              SAFE_DIVIDE(NULLIF(bs.bs_students_passed, 0), NULLIF(ir.total_students, 0)),
-              SAFE_DIVIDE(NULLIF(st.skill_pairs_passed, 0),  NULLIF(ir.total_students, 0))
+              IF(bs.bs_students_attempted > 0,
+                 SAFE_DIVIDE(bs.bs_students_passed, NULLIF(ir.total_students, 0)),
+                 NULL),
+              IF(st.skill_students_passed > 0,
+                 SAFE_DIVIDE(st.skill_students_passed, NULLIF(ir.total_students, 0)),
+                 NULL)
             ) * 100,
           1) AS skill_pass_pct,
           -- Academic Attempt %: students with graded assessment score records / total enrolled
