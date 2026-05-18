@@ -2761,20 +2761,13 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
           WHERE {' AND '.join(where_clauses)}
           GROUP BY sg.institute_name
         ),
-        institute_date_counts AS (
-          SELECT
-            sg.institute_name AS institute,
-            COUNT(DISTINCT DATE(sg.assessment_start_datetime)) AS date_count
-          FROM {refs["skill_graded"]} sg
-          WHERE {' AND '.join(where_clauses)}
-            AND sg.assessment_type = 'SKILL_ASSESSMENT'
-          GROUP BY sg.institute_name
-        ),
         best_scores AS (
+          -- Skill assessment scores from assessment_topic (same filter as Assessment tab)
           SELECT
             COALESCE(NULLIF(TRIM(t.institute_name), ''), u.institute_name) AS institute,
             t.user_id,
             t.assessment_id,
+            DATE(t.assessment_start_datetime) AS assessment_date,
             MAX(SAFE_DIVIDE(t.user_section_score, NULLIF(t.section_actual_score, 0))) AS best_score_pct
           FROM {assessment_topic_ref} t
           LEFT JOIN institute_roster_raw u ON u.user_id = t.user_id
@@ -2782,11 +2775,15 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
             AND NOT REGEXP_CONTAINS(LOWER(COALESCE(t.assessment_title, '')), r'mock')
             AND COALESCE(t.section_actual_score, 0) > 0
             {topic_window_and_batch_filters}
-          GROUP BY institute, user_id, assessment_id
+          GROUP BY institute, user_id, assessment_id, assessment_date
         ),
         bs_totals AS (
+          -- Aggregates from assessment_topic: used as the SOLE source for skill metrics.
+          -- Universities with no skill assessment data in assessment_topic get NULL here
+          -- (LEFT JOIN in SELECT) → skill_conducted/participation/pass all NULL.
           SELECT institute,
-            COUNT(DISTINCT user_id) AS bs_students_attempted,
+            COUNT(DISTINCT assessment_date) AS bs_assessment_dates,
+            COUNT(DISTINCT user_id)         AS bs_students_attempted,
             COUNT(DISTINCT IF(best_score_pct >= 0.80, user_id, NULL)) AS bs_students_passed
           FROM best_scores GROUP BY institute
         ),
@@ -2813,23 +2810,21 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
         )
         SELECT
           st.institute,
-          -- skill_conducted = COUNT DISTINCT assessment dates (used for conduction %)
-          COALESCE(idc.date_count, 0) AS skill_conducted,
-          -- Skill Assessment Participation %: unique users attempted / total enrolled
-          ROUND(SAFE_DIVIDE(st.skill_students_attempted, NULLIF(ir.total_students, 0)) * 100, 1) AS skill_participation_pct,
-          -- Skill Assessment Pass %: students who passed / total enrolled (always 0-100%)
-          -- Primary:  score-based from assessment_topic (distinct students >= 80%)
-          -- Fallback: evaluation_result from skill_graded (distinct students with PASSED result)
-          -- Both use total_students as denominator (pass % = passed students / enrolled).
+          -- Skill metrics come ONLY from assessment_topic (same source as Assessment tab).
+          -- Universities with no skill assessment data in assessment_topic → all NULL.
+          -- skill_conducted: distinct assessment dates where skill data exists
+          bs.bs_assessment_dates AS skill_conducted,
+          -- Skill Participation %: distinct students with skill data / total enrolled
           ROUND(
-            COALESCE(
-              IF(bs.bs_students_attempted > 0,
-                 SAFE_DIVIDE(bs.bs_students_passed, NULLIF(ir.total_students, 0)),
-                 NULL),
-              IF(st.skill_students_passed > 0,
-                 SAFE_DIVIDE(st.skill_students_passed, NULLIF(ir.total_students, 0)),
-                 NULL)
-            ) * 100,
+            IF(bs.bs_students_attempted > 0,
+               SAFE_DIVIDE(bs.bs_students_attempted, NULLIF(ir.total_students, 0)),
+               NULL) * 100,
+          1) AS skill_participation_pct,
+          -- Skill Pass %: distinct students who scored >= 80% / total enrolled
+          ROUND(
+            IF(bs.bs_students_attempted > 0,
+               SAFE_DIVIDE(bs.bs_students_passed, NULLIF(ir.total_students, 0)),
+               NULL) * 100,
           1) AS skill_pass_pct,
           -- Academic Attempt %: students with graded assessment score records / total enrolled
           ROUND(SAFE_DIVIDE(NULLIF(gs.gs_students_attempted, 0), NULLIF(ir.total_students, 0)) * 100, 1) AS academic_attempt_pct,
@@ -2837,7 +2832,6 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
           ROUND(SAFE_DIVIDE(NULLIF(gs.gs_students_passed, 0), NULLIF(ir.total_students, 0)) * 100, 1) AS academic_pass_pct
         FROM sg_totals st
         LEFT JOIN institute_roster ir ON ir.institute = st.institute
-        LEFT JOIN institute_date_counts idc ON idc.institute = st.institute
         LEFT JOIN bs_totals bs ON bs.institute = st.institute
         LEFT JOIN gs_totals gs ON gs.institute = st.institute
         ORDER BY st.institute
