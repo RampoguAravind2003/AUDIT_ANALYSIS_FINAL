@@ -2289,36 +2289,35 @@ def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str, section
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
     """
-    Returns per-subject module quiz pass % using:
-      schedule session_type='EXAM' → session_id + sem_course_title
-      → JOIN quiz_attempts ON quiz_id = session_id
+    Returns per-subject module quiz pass % from quiz_attempts where
+    derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ').
 
-    Module quiz sessions are EXAM-type rows in the schedule.
-    Each EXAM row has a session_id and sem_course_title.
-    That session_id is the quiz_id stored in quiz_attempts.
+    Strategy:
+      Primary   — quiz_attempts has a course column (course_title, subject_name, etc.)
+                  → group directly by that column, no schedule join needed.
+      Fallback  — no course column in quiz_attempts
+                  → join schedule (session_type='EXAM', session_id) to get sem_course_title.
 
-    Pass logic (consistent with overview fetch_quiz_metrics):
+    Pass logic:
       best_attempt_evaluation_result IN ('PASS','PASSED')
-      OR (result is blank/null AND best_attempt_percentage_score >= 80)
-
-    NOTE: No derived_unit_type filter on quiz_attempts — the JOIN through
-    schedule session_ids already scopes to module quiz sessions only.
+      OR (result blank/null AND best_attempt_percentage_score >= 80)
 
     Columns returned: course_title, attempted, passed, module_quiz_pass_pct
     """
     refs = get_table_refs()
 
-    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
-    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
-    course_col = first_existing_column(
-        sched_cols,
-        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
+    # ── Discover columns in quiz_attempts ─────────────────────────────────────
+    qa_table_ref = get_config("BQ_QUIZ_ATTEMPTS_TABLE", DEFAULT_QUIZ_ATTEMPTS_TABLE)
+    qa_cols = fetch_table_columns(qa_table_ref, DEFAULT_QUIZ_ATTEMPTS_TABLE)
+    qa_course_col = first_existing_column(
+        qa_cols,
+        ["course_title", "subject_name", "course_name", "sem_course_title",
+         "semester_course_title", "subject_title"],
     )
-    if not course_col:
-        return pd.DataFrame(columns=["course_title", "attempted", "passed", "module_quiz_pass_pct"])
 
     q_where = [
         f"LOWER(TRIM(COALESCE(q.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')",
     ]
     window_clause = get_semester_window_clause(semester, batch, "q.institute_name", "q.session_date")
     if window_clause:
@@ -2327,6 +2326,8 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         q_where.append(f"LOWER(COALESCE(q.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
     if section:
         q_where.append(f"LOWER(TRIM(COALESCE(q.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    where_str = ' AND '.join(q_where)
 
     _pass_expr = """(
                 UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
@@ -2337,38 +2338,68 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
                 )
               )"""
 
-    sql = f"""
-        WITH exam_sessions AS (
-          -- EXAM-type sessions in schedule: session_id = quiz_id in quiz_attempts
-          -- Each session has a sem_course_title giving the course mapping.
-          SELECT DISTINCT
-            TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
-            CAST(s.session_id AS STRING)          AS quiz_id
-          FROM {refs["schedule"]} s
-          WHERE UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'
-            AND TRIM(COALESCE(CAST(s.session_id  AS STRING), '')) != ''
-            AND TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''
+    if qa_course_col:
+        # ── Primary: course column exists directly in quiz_attempts ───────────
+        sql = f"""
+            SELECT
+              TRIM(CAST(q.{qa_course_col} AS STRING)) AS course_title,
+              COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
+                AS attempted,
+              COUNT(DISTINCT CASE WHEN {_pass_expr}
+                THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+              END) AS passed,
+              ROUND(SAFE_DIVIDE(
+                COUNT(DISTINCT CASE WHEN {_pass_expr}
+                  THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+                END),
+                NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
+              ) * 100, 1) AS module_quiz_pass_pct
+            FROM {refs["quiz_attempts"]} q
+            WHERE {where_str}
+              AND TRIM(COALESCE(CAST(q.{qa_course_col} AS STRING), '')) != ''
+            GROUP BY course_title
+            ORDER BY course_title
+        """
+    else:
+        # ── Fallback: join schedule EXAM sessions for course mapping ──────────
+        sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
+        sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
+        sched_course_col = first_existing_column(
+            sched_cols,
+            ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
         )
-        SELECT
-          r.course_title,
-          COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
-            AS attempted,
-          COUNT(DISTINCT CASE WHEN {_pass_expr}
-            THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
-          END) AS passed,
-          ROUND(SAFE_DIVIDE(
-            COUNT(DISTINCT CASE WHEN {_pass_expr}
-              THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
-            END),
-            NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
-          ) * 100, 1) AS module_quiz_pass_pct
-        FROM {refs["quiz_attempts"]} q
-        JOIN exam_sessions r ON CAST(q.quiz_id AS STRING) = r.quiz_id
-        WHERE {' AND '.join(q_where)}
-          AND q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
-        GROUP BY r.course_title
-        ORDER BY r.course_title
-    """
+        if not sched_course_col:
+            return pd.DataFrame(columns=["course_title", "attempted", "passed", "module_quiz_pass_pct"])
+
+        sql = f"""
+            WITH exam_sessions AS (
+              SELECT DISTINCT
+                TRIM(CAST(s.{sched_course_col} AS STRING)) AS course_title,
+                CAST(s.session_id AS STRING)               AS quiz_id
+              FROM {refs["schedule"]} s
+              WHERE UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'
+                AND TRIM(COALESCE(CAST(s.session_id       AS STRING), '')) != ''
+                AND TRIM(COALESCE(CAST(s.{sched_course_col} AS STRING), '')) != ''
+            )
+            SELECT
+              r.course_title,
+              COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
+                AS attempted,
+              COUNT(DISTINCT CASE WHEN {_pass_expr}
+                THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+              END) AS passed,
+              ROUND(SAFE_DIVIDE(
+                COUNT(DISTINCT CASE WHEN {_pass_expr}
+                  THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+                END),
+                NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
+              ) * 100, 1) AS module_quiz_pass_pct
+            FROM {refs["quiz_attempts"]} q
+            JOIN exam_sessions r ON CAST(q.quiz_id AS STRING) = r.quiz_id
+            WHERE {where_str}
+            GROUP BY r.course_title
+            ORDER BY r.course_title
+        """
     try:
         return run_query(sql)
     except Exception:
