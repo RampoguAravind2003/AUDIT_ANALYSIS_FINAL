@@ -2289,14 +2289,20 @@ def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str, section
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
     """
-    Returns per-subject module quiz pass % using the schedule table MODULE_QUIZ approach.
+    Returns per-subject module quiz pass % using:
+      schedule session_type='EXAM' → session_id + sem_course_title
+      → JOIN quiz_attempts ON quiz_id = session_id
 
-    Path:
-      schedule.semester_course_title (or best available course column)
-      → resource_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
-      → resource_id (= quiz_id in quiz_attempts)
-      → pass % = student×quiz pairs with best_attempt_percentage_score >= 80 /
-                 total attempted student×quiz pairs
+    Module quiz sessions are EXAM-type rows in the schedule.
+    Each EXAM row has a session_id and sem_course_title.
+    That session_id is the quiz_id stored in quiz_attempts.
+
+    Pass logic (consistent with overview fetch_quiz_metrics):
+      best_attempt_evaluation_result IN ('PASS','PASSED')
+      OR (result is blank/null AND best_attempt_percentage_score >= 80)
+
+    NOTE: No derived_unit_type filter on quiz_attempts — the JOIN through
+    schedule session_ids already scopes to module quiz sessions only.
 
     Columns returned: course_title, attempted, passed, module_quiz_pass_pct
     """
@@ -2308,6 +2314,8 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         sched_cols,
         ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
     )
+    if not course_col:
+        return pd.DataFrame(columns=["course_title", "attempted", "passed", "module_quiz_pass_pct"])
 
     q_where = [
         f"LOWER(TRIM(COALESCE(q.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
@@ -2320,95 +2328,46 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
     if section:
         q_where.append(f"LOWER(TRIM(COALESCE(q.section_name, ''))) = LOWER('{sql_escape(section)}')")
 
-    if course_col:
-        # Primary path:
-        #   schedule session_type='EXAM' → session_id = quiz_id in quiz_attempts
-        #   (Module Quiz Conduction % uses session_id for EXAM rows — same ID
-        #    that quiz_attempts stores as quiz_id for MODULE_QUIZ/COURSE_QUIZ types.)
-        #   resource_id is used as a fallback when session_id is absent.
-        #   Pass = best_attempt_evaluation_result IN ('PASS','PASSED'),
-        #          or score >= 80 when evaluation_result is absent.
-        sql = f"""
-            WITH exam_quiz_ids AS (
-              SELECT DISTINCT
-                TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
-                CAST(COALESCE(
-                  NULLIF(TRIM(CAST(s.session_id AS STRING)), ''),
-                  NULLIF(TRIM(CAST(s.resource_id AS STRING)), '')
-                ) AS STRING) AS quiz_id
-              FROM {refs["schedule"]} s
-              WHERE UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'
-                AND TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''
-                AND COALESCE(
-                  NULLIF(TRIM(CAST(s.session_id AS STRING)), ''),
-                  NULLIF(TRIM(CAST(s.resource_id AS STRING)), '')
-                ) IS NOT NULL
-            )
-            SELECT
-              r.course_title,
-              COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
-                AS attempted,
-              COUNT(DISTINCT CASE
-                WHEN UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
-                  OR (
-                    (q.best_attempt_evaluation_result IS NULL
-                      OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
-                    AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
-                  )
-                THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
-              END) AS passed,
-              ROUND(SAFE_DIVIDE(
-                COUNT(DISTINCT CASE
-                  WHEN UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
-                    OR (
-                      (q.best_attempt_evaluation_result IS NULL
-                        OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
-                      AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
-                    )
-                  THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
-                END),
-                NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
-              ) * 100, 1) AS module_quiz_pass_pct
-            FROM {refs["quiz_attempts"]} q
-            JOIN exam_quiz_ids r ON CAST(q.quiz_id AS STRING) = r.quiz_id
-            WHERE {' AND '.join(q_where)}
-            GROUP BY r.course_title
-            ORDER BY r.course_title
-        """
-    else:
-        # Fallback: no course mapping available — use derived_unit_type for module quizzes
-        sql = f"""
-            SELECT
-              CAST(q.quiz_id AS STRING) AS course_title,
-              COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
-                AS attempted,
-              COUNT(DISTINCT CASE
-                WHEN UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
-                  OR (
-                    (q.best_attempt_evaluation_result IS NULL
-                      OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
-                    AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
-                  )
-                THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
-              END) AS passed,
-              ROUND(SAFE_DIVIDE(
-                COUNT(DISTINCT CASE
-                  WHEN UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
-                    OR (
-                      (q.best_attempt_evaluation_result IS NULL
-                        OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
-                      AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
-                    )
-                  THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
-                END),
-                NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
-              ) * 100, 1) AS module_quiz_pass_pct
-            FROM {refs["quiz_attempts"]} q
-            WHERE {' AND '.join(q_where)}
-              AND q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
-            GROUP BY q.quiz_id
-            ORDER BY q.quiz_id
-        """
+    _pass_expr = """(
+                UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
+                OR (
+                  (q.best_attempt_evaluation_result IS NULL
+                    OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
+                  AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                )
+              )"""
+
+    sql = f"""
+        WITH exam_sessions AS (
+          -- EXAM-type sessions in schedule: session_id = quiz_id in quiz_attempts
+          -- Each session has a sem_course_title giving the course mapping.
+          SELECT DISTINCT
+            TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
+            CAST(s.session_id AS STRING)          AS quiz_id
+          FROM {refs["schedule"]} s
+          WHERE UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'
+            AND TRIM(COALESCE(CAST(s.session_id  AS STRING), '')) != ''
+            AND TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''
+        )
+        SELECT
+          r.course_title,
+          COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
+            AS attempted,
+          COUNT(DISTINCT CASE WHEN {_pass_expr}
+            THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+          END) AS passed,
+          ROUND(SAFE_DIVIDE(
+            COUNT(DISTINCT CASE WHEN {_pass_expr}
+              THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+            END),
+            NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
+          ) * 100, 1) AS module_quiz_pass_pct
+        FROM {refs["quiz_attempts"]} q
+        JOIN exam_sessions r ON CAST(q.quiz_id AS STRING) = r.quiz_id
+        WHERE {' AND '.join(q_where)}
+        GROUP BY r.course_title
+        ORDER BY r.course_title
+    """
     try:
         return run_query(sql)
     except Exception:
