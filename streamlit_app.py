@@ -2509,6 +2509,10 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         if not sched_course_col:
             return pd.DataFrame(columns=["course_title", "attempted", "passed", "module_quiz_pass_pct"])
 
+        # Check if schedule has session_name_enum (used for courses like Quantitative Aptitude
+        # where module quiz session_name_enum starts with 'QUIZ' and acts as the quiz_id)
+        sched_name_enum_col = first_existing_column(sched_cols, ["session_name_enum", "session_name"])
+
         # Build schedule filters (institute + batch/semester scope)
         s_where = [
             f"UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'",
@@ -2523,22 +2527,45 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         if section:
             s_where.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
 
-        sql = f"""
-            WITH exam_sessions AS (
-              -- EXAM sessions: try resource_id first (same pattern as LP_QUIZ),
-              -- fall back to session_id as the quiz identifier.
+        s_where_str = ' AND '.join(s_where)
+
+        # Build exam_sessions CTE: three candidate quiz_id paths unified via UNION
+        #   Path 1: resource_id (populated for most courses — same as LP_QUIZ pattern)
+        #   Path 2: session_id (numeric fallback)
+        #   Path 3: session_name_enum starting with 'QUIZ' (Quantitative Aptitude & similar)
+        if sched_name_enum_col:
+            name_enum_union = f"""
+              UNION ALL
+              -- Path 3: session_name_enum starts with 'QUIZ' — quiz_id IS the enum value
               SELECT DISTINCT
                 TRIM(CAST(s.{sched_course_col} AS STRING)) AS course_title,
-                CAST(COALESCE(
-                  NULLIF(TRIM(CAST(s.resource_id AS STRING)), ''),
-                  CAST(s.session_id AS STRING)
-                ) AS STRING) AS quiz_id
+                TRIM(CAST(s.{sched_name_enum_col} AS STRING)) AS quiz_id
               FROM {refs["schedule"]} s
-              WHERE {' AND '.join(s_where)}
-                AND (
-                  TRIM(COALESCE(CAST(s.resource_id AS STRING), '')) != ''
-                  OR TRIM(COALESCE(CAST(s.session_id AS STRING), '')) != ''
-                )
+              WHERE {s_where_str}
+                AND UPPER(TRIM(COALESCE(CAST(s.{sched_name_enum_col} AS STRING), ''))) LIKE 'QUIZ%'
+                AND TRIM(COALESCE(CAST(s.{sched_name_enum_col} AS STRING), '')) != ''
+            """
+        else:
+            name_enum_union = ""
+
+        sql = f"""
+            WITH exam_sessions AS (
+              -- Path 1: resource_id (same pattern as LP_QUIZ classroom quiz)
+              SELECT DISTINCT
+                TRIM(CAST(s.{sched_course_col} AS STRING)) AS course_title,
+                TRIM(CAST(s.resource_id AS STRING)) AS quiz_id
+              FROM {refs["schedule"]} s
+              WHERE {s_where_str}
+                AND TRIM(COALESCE(CAST(s.resource_id AS STRING), '')) != ''
+              UNION ALL
+              -- Path 2: session_id numeric fallback
+              SELECT DISTINCT
+                TRIM(CAST(s.{sched_course_col} AS STRING)) AS course_title,
+                CAST(s.session_id AS STRING) AS quiz_id
+              FROM {refs["schedule"]} s
+              WHERE {s_where_str}
+                AND TRIM(COALESCE(CAST(s.session_id AS STRING), '')) != ''
+              {name_enum_union}
             )
             SELECT
               r.course_title,
