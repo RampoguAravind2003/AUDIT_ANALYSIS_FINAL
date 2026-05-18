@@ -2779,11 +2779,10 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
               sg.user_id, NULL)) AS skill_students_passed,
             COUNT(DISTINCT IF(sg.assessment_type = 'GRADED_ASSESSMENT',
               sg.user_id, NULL))                                                                AS academic_students_attempted,
-            COUNT(DISTINCT IF(sg.assessment_type = 'GRADED_ASSESSMENT',
-              CONCAT(CAST(sg.user_id AS STRING), '||', CAST(sg.assessment_id AS STRING)), NULL)) AS academic_pairs_attempted,
+            -- Distinct students who passed at least one graded assessment (for academic pass %)
             COUNT(DISTINCT IF(sg.assessment_type = 'GRADED_ASSESSMENT'
               AND UPPER(TRIM(COALESCE(sg.section_evaluation_result, ''))) LIKE '%PASS%',
-              CONCAT(CAST(sg.user_id AS STRING), '||', CAST(sg.assessment_id AS STRING)), NULL)) AS academic_pairs_passed
+              sg.user_id, NULL))                                                                AS academic_students_passed
           FROM {refs["skill_graded"]} sg
           WHERE {' AND '.join(where_clauses)}
           GROUP BY sg.institute_name
@@ -2853,10 +2852,26 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
                SAFE_DIVIDE(bs.bs_students_passed, NULLIF(ir.total_students, 0)),
                NULL) * 100,
           1) AS skill_pass_pct,
-          -- Academic Attempt %: students with graded assessment score records / total enrolled
-          ROUND(SAFE_DIVIDE(NULLIF(gs.gs_students_attempted, 0), NULLIF(ir.total_students, 0)) * 100, 1) AS academic_attempt_pct,
-          -- Academic Pass %: students scored >= 80% on graded assessment / total enrolled
-          ROUND(SAFE_DIVIDE(NULLIF(gs.gs_students_passed, 0), NULLIF(ir.total_students, 0)) * 100, 1) AS academic_pass_pct
+          -- Academic Attempt %: score-based (assessment_topic) first; skill_graded fallback
+          ROUND(
+            COALESCE(
+              IF(gs.gs_students_attempted > 0,
+                 SAFE_DIVIDE(gs.gs_students_attempted, NULLIF(ir.total_students, 0)),
+                 NULL),
+              IF(st.academic_students_attempted > 0,
+                 SAFE_DIVIDE(st.academic_students_attempted, NULLIF(ir.total_students, 0)),
+                 NULL)
+            ) * 100, 1) AS academic_attempt_pct,
+          -- Academic Pass %: score-based (>= 80% from assessment_topic) first; evaluation_result fallback
+          ROUND(
+            COALESCE(
+              IF(gs.gs_students_attempted > 0,
+                 SAFE_DIVIDE(gs.gs_students_passed, NULLIF(ir.total_students, 0)),
+                 NULL),
+              IF(st.academic_students_passed > 0,
+                 SAFE_DIVIDE(st.academic_students_passed, NULLIF(ir.total_students, 0)),
+                 NULL)
+            ) * 100, 1) AS academic_pass_pct
         FROM sg_totals st
         LEFT JOIN institute_roster ir ON ir.institute = st.institute
         LEFT JOIN bs_totals bs ON bs.institute = st.institute
