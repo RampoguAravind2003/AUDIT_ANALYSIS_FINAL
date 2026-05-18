@@ -2365,6 +2365,7 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         FROM {refs["quiz_attempts"]} q
         JOIN exam_sessions r ON CAST(q.quiz_id AS STRING) = r.quiz_id
         WHERE {' AND '.join(q_where)}
+          AND q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
         GROUP BY r.course_title
         ORDER BY r.course_title
     """
