@@ -2287,6 +2287,99 @@ def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str, section
 
 
 @st.cache_data(ttl=600, show_spinner=False)
+def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
+    """
+    Returns per-subject module quiz pass % using the schedule table MODULE_QUIZ approach.
+
+    Path:
+      schedule.semester_course_title (or best available course column)
+      → resource_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
+      → resource_id (= quiz_id in quiz_attempts)
+      → pass % = student×quiz pairs with best_attempt_percentage_score >= 80 /
+                 total attempted student×quiz pairs
+
+    Columns returned: course_title, attempted, passed, module_quiz_pass_pct
+    """
+    refs = get_table_refs()
+
+    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
+    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
+    course_col = first_existing_column(
+        sched_cols,
+        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
+    )
+
+    q_where = [
+        f"LOWER(TRIM(COALESCE(q.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "q.institute_name", "q.session_date")
+    if window_clause:
+        q_where.append(window_clause)
+    if should_apply_batch_filter(batch):
+        q_where.append(f"LOWER(COALESCE(q.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    if section:
+        q_where.append(f"LOWER(TRIM(COALESCE(q.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    if course_col:
+        sql = f"""
+            WITH mq_ids AS (
+              SELECT
+                TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
+                CAST(s.resource_id AS STRING)         AS quiz_id
+              FROM {refs["schedule"]} s
+              WHERE UPPER(TRIM(CAST(s.resource_type AS STRING))) IN ('MODULE_QUIZ', 'COURSE_QUIZ')
+                AND TRIM(COALESCE(CAST(s.resource_id AS STRING),    '')) != ''
+                AND TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''
+            )
+            SELECT
+              r.course_title,
+              COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
+                AS attempted,
+              COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+              END) AS passed,
+              ROUND(SAFE_DIVIDE(
+                COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                  THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+                END),
+                NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
+              ) * 100, 1) AS module_quiz_pass_pct
+            FROM {refs["quiz_attempts"]} q
+            JOIN mq_ids r ON CAST(q.quiz_id AS STRING) = r.quiz_id
+            WHERE {' AND '.join(q_where)}
+              AND q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
+            GROUP BY r.course_title
+            ORDER BY r.course_title
+        """
+    else:
+        # Fallback: use derived_unit_type directly without course mapping
+        sql = f"""
+            SELECT
+              CAST(q.quiz_id AS STRING) AS course_title,
+              COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
+                AS attempted,
+              COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+              END) AS passed,
+              ROUND(SAFE_DIVIDE(
+                COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                  THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
+                END),
+                NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
+              ) * 100, 1) AS module_quiz_pass_pct
+            FROM {refs["quiz_attempts"]} q
+            WHERE {' AND '.join(q_where)}
+              AND q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
+            GROUP BY q.quiz_id
+            ORDER BY q.quiz_id
+        """
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame(columns=["course_title", "attempted", "passed", "module_quiz_pass_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_session_delivery_metrics(batch: str, semester: str) -> pd.DataFrame:
     """
     Returns per-institute practice delivery, module quiz conduction, and skill assessment
@@ -3566,13 +3659,14 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
             "Practice Delivery %":      _s(row.get("practice_pct")),
             "Module Quiz Conduction %": _s(row.get("exam_pct")),
             "Student Completion %":     _s(row.get("completion_pct")),
-            "Quiz Pass %":              _s(row.get("quiz_pass_pct")),
+            "CR Quiz Pass %":           _s(row.get("quiz_pass_pct")),
+            "Module Quiz Pass %":       _s(row.get("module_quiz_pass_pct")),
             "Skill Pass %":             _s(row.get("skill_pass_pct")),
         })
 
     cm_df = pd.DataFrame(display_rows)
     _cm_pct_cols = ["Lecture Delivery %", "Practice Delivery %", "Module Quiz Conduction %",
-                    "Student Completion %", "Quiz Pass %", "Skill Pass %"]
+                    "Student Completion %", "CR Quiz Pass %", "Module Quiz Pass %", "Skill Pass %"]
     _cm_styled = _apply_pct_colors(cm_df, _cm_pct_cols)
 
     cm_key = f"course_matrix_table_{st.session_state.get('cm_table_nonce', 0)}"
@@ -3599,7 +3693,8 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
             "Practice Delivery %":      st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%", width=115),
             "Module Quiz Conduction %": st.column_config.NumberColumn("Module Quiz Conduction %", format="%.1f%%", width=130),
             "Student Completion %":     st.column_config.NumberColumn("Student Completion %", format="%.1f%%", width=120),
-            "Quiz Pass %":              st.column_config.NumberColumn("Quiz Pass %", format="%.1f%%", width=95),
+            "CR Quiz Pass %":           st.column_config.NumberColumn("CR Quiz Pass %", format="%.1f%%", width=105),
+            "Module Quiz Pass %":       st.column_config.NumberColumn("Module Quiz Pass %", format="%.1f%%", width=115),
             "Skill Pass %":             st.column_config.NumberColumn("Skill Pass %", format="%.1f%%", width=95),
         },
     )
@@ -5831,6 +5926,43 @@ def main():
                 return round(sum(vals) / len(vals), 1) if vals else None
             return None
 
+        # ── Module quiz pass % per course via schedule MODULE_QUIZ/COURSE_QUIZ ──
+        with st.spinner("Loading module quiz pass rates…"):
+            module_quiz_pass_by_course_df = fetch_module_quiz_pass_by_course(batch, semester, selected_university, selected_section)
+
+        _mq_pass_course_lookup: dict[str, float | None] = {}
+        _mq_pass_by_canonical: dict[str, list[float]] = {}
+        if not module_quiz_pass_by_course_df.empty and "course_title" in module_quiz_pass_by_course_df.columns:
+            for _, _mqr in module_quiz_pass_by_course_df.iterrows():
+                _mqt = str(_mqr.get("course_title") or "").strip()
+                _mqv = _mqr.get("module_quiz_pass_pct")
+                try:
+                    _mqval = None if (_mqv is None or pd.isna(_mqv)) else float(_mqv)
+                except (TypeError, ValueError):
+                    _mqval = None
+                if _mqt:
+                    _mq_pass_course_lookup[normalize_text(_mqt)] = _mqval
+                    _mqcanon = normalize_text(
+                        sem_course_titles.get(normalize_text(_mqt))
+                        or sem_course_titles.get(normalize_text(normalize_course_name(_mqt, semester)))
+                        or normalize_course_name(_mqt, semester)
+                    )
+                    if _mqval is not None:
+                        _mq_pass_by_canonical.setdefault(_mqcanon, []).append(_mqval)
+
+        def _course_module_quiz_pass(course_name: str) -> float | None:
+            key = normalize_text(course_name)
+            if key in _mq_pass_course_lookup:
+                return _mq_pass_course_lookup[key]
+            for k, v in _mq_pass_course_lookup.items():
+                if key in k or k in key:
+                    return v
+            canonical_key = normalize_text(normalize_course_name(course_name, semester))
+            if canonical_key in _mq_pass_by_canonical:
+                vals = _mq_pass_by_canonical[canonical_key]
+                return round(sum(vals) / len(vals), 1) if vals else None
+            return None
+
         # portal_course_id map: normalize_text(sem_course_title) → portal_course_id
         with st.spinner("Loading portal course ID map…"):
             _sem_course_portal_ids = fetch_portal_course_id_map(batch, semester)
@@ -5897,10 +6029,11 @@ def main():
                 "total_slots":    ct_row.get("Total Slots"),
                 "lecture_pct":    lecture_pct,
                 "practice_pct":   practice_pct,
-                "exam_pct":       exam_pct,
-                "completion_pct": completion,
-                "quiz_pass_pct":  _course_quiz_pass(cname),
-                "skill_pass_pct": ct_row.get("Skill Pass %"),
+                "exam_pct":              exam_pct,
+                "completion_pct":        completion,
+                "quiz_pass_pct":         _course_quiz_pass(cname),
+                "module_quiz_pass_pct":  _course_module_quiz_pass(cname),
+                "skill_pass_pct":        ct_row.get("Skill Pass %"),
             })
 
         # ── Course Matrix or Course Detail ─────────────────────────────────────
@@ -5928,9 +6061,10 @@ def main():
                     ("Lec %",         "Percentage of planned lecture sessions delivered."),
                     ("Prac %",        "Percentage of planned practice sessions delivered."),
                     ("Exam %",        "Percentage of planned exam sessions delivered."),
-                    ("Completion %",  "Percentage of content units completed by students for this course."),
-                    ("Quiz Pass %",   "Percentage of classroom quiz participants who scored ≥ 80% for this course."),
-                    ("Skill Pass %",  "Percentage of students who scored ≥ 80% in the skill assessment for this course."),
+                    ("Completion %",       "Percentage of content units completed by students for this course."),
+                    ("CR Quiz Pass %",    "Percentage of classroom quiz participants who scored ≥ 80% for this course."),
+                    ("Module Quiz Pass %","Percentage of module quiz participants who scored ≥ 80% for this course."),
+                    ("Skill Pass %",      "Percentage of students who scored ≥ 80% in the skill assessment for this course."),
                 ]
                 _cm_items = "".join(
                     f'<li style="margin-bottom:10px;">'
