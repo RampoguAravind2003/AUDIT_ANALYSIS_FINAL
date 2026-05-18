@@ -5490,45 +5490,32 @@ def main():
         render_section_header("University overview", "Filter by delivery mode and click a university row to open its course breakdown.")
         st.caption(f"Planned content slots till date is calculated as of {format_today_display_date()}.")
 
-        with st.expander("📋 Column guide — what each metric means", expanded=False):
-            _ov_cols = [
-                ("Universities", "Name of the institution."),
-                ("Delivery Mode", "Program delivery mode — Full Delivery, Co Delivery, or Hybrid Delivery."),
-                ("Start Date", "Semester start date for the university."),
-                ("End Date", "Semester end date for the university."),
-                ("Delivery capacity slots", "Total planned NIAT execution slots for the semester (net executional slots from the portal course plan)."),
-                ("Planned content slots", "Total distinct session slots scheduled in the timetable across all subjects."),
-                ("Planned content slots till date", "Pro-rated planned slots from semester start up to today based on weekday pacing."),
-                ("Planned slots delivered till date", "Actual number of planned sessions delivered/completed up to today."),
-                ("Deviation %", "How ahead or behind the university is vs the expected pace. Negative = behind schedule. Formula: (Delivered − Expected) / Expected × 100."),
-                ("Class Room Quizzes Attempt %", "% of enrolled students who attempted at least one classroom quiz."),
-                ("Class Room Quizzes Pass %", "% of classroom quiz student–quiz pairs where best attempt score ≥ 80%."),
-                ("CR Quiz Pass % (≥60)", "% of classroom quiz pairs with best attempt score ≥ 60%."),
-                ("CR Quiz Pass % (>80)", "% of classroom quiz pairs with best attempt score > 80%."),
-                ("Lecture Delivery %", "% of planned lecture sessions that were delivered."),
-                ("Practice Delivery %", "% of planned practice sessions that were delivered."),
-                ("Practice Completion %", "% of available practice units completed by students (from unlocked units table)."),
-                ("Module Quiz Conduction %", "% of planned module quiz sessions that were conducted."),
-                ("Module Quiz Student Participation %", "% of enrolled students who attempted at least one module/course quiz."),
-                ("Module Quiz Pass %", "% of module quiz student–quiz pairs where best attempt score ≥ 80%."),
-                ("Module Quiz Pass % (≥60)", "% of module quiz pairs with best attempt score ≥ 60%."),
-                ("Module Quiz Pass % (>80)", "% of module quiz pairs with best attempt score > 80%."),
-                ("Skill Conduction %", "Number of distinct skill assessment dates conducted. 5 dates = 100%."),
-                ("Skill Participation %", "% of enrolled students who participated in at least one skill assessment."),
-                ("Skill Pass %", "% of enrolled students who scored ≥ 80% on skill assessments (score-based from assessment records)."),
-                ("Academic Attempt %", "% of enrolled students who have graded assessment score records."),
-                ("Academic Pass %", "% of enrolled students who scored ≥ 80% on graded/academic assessments."),
+        with st.expander("Metric definitions", expanded=False):
+            _ov_metrics = [
+                ("Class Room Quizzes Attempt %",            "Percentage of quiz-attempted students who scored ≥ 80% in classroom quizzes."),
+                ("Class Room Quizzes Pass %",               "Percentage of quiz-attempted students who scored ≥ 80% in classroom quizzes."),
+                ("Practice Delivery %",                     "Percentage of delivered practice sessions conducted till date."),
+                ("Practice Completion %",                   "Percentage of students who completed the assigned practice sets by attempting them."),
+                ("Module Quiz Conduction %",                "Percentage of planned module quizzes that were successfully conducted till date."),
+                ("Module Quiz Student Participation %",     "Percentage of session-attending students who participated in module quizzes."),
+                ("Module Quiz Pass %",                      "Percentage of module quiz participants who scored ≥ 80%."),
+                ("Skill Assessment Conduction %",           "Percentage of planned skill assessments that were successfully conducted till date."),
+                ("Skill Assessment Student Participation %","Percentage of session-attending students who participated in skill assessments."),
+                ("Skill Assessment Pass %",                 "Percentage of students who scored ≥ 80% in skill assessments."),
+                ("Academic Assessments Pass %",             "Percentage of students who cleared university academic assessments/exams based on university criteria or ≥ 90% benchmark where criteria is unavailable."),
             ]
-            _g1, _g2 = st.columns(2)
-            _mid = len(_ov_cols) // 2
-            with _g1:
-                for _col, _desc in _ov_cols[:_mid]:
-                    st.markdown(f"**{_col}**  \n{_desc}")
-                    st.divider()
-            with _g2:
-                for _col, _desc in _ov_cols[_mid:]:
-                    st.markdown(f"**{_col}**  \n{_desc}")
-                    st.divider()
+            _metric_items = "".join(
+                f'<li style="margin-bottom:10px;">'
+                f'<code style="color:#059669;background:rgba(5,150,105,.08);'
+                f'padding:2px 8px;border-radius:4px;font-size:0.85em;">{m}</code>'
+                f' : {d}'
+                f'</li>'
+                for m, d in _ov_metrics
+            )
+            st.markdown(
+                f'<ul style="list-style:disc;padding-left:20px;line-height:1.8;">{_metric_items}</ul>',
+                unsafe_allow_html=True,
+            )
         delivery_mode_map = {
             "All": None,
             "Full": "Full Delivery",
@@ -5928,32 +5915,34 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-            with st.expander("📋 Column guide — what each metric means", expanded=False):
-                _cm_cols = [
-                    ("Course", "Subject / course name for the semester."),
-                    ("Delivered", "Total number of sessions delivered for this course."),
-                    ("Planned", "Total number of sessions planned for this course."),
-                    ("Lec Slots", "Number of lecture sessions planned."),
-                    ("Prac Slots", "Number of practice sessions planned."),
-                    ("Exam Slots", "Number of exam sessions planned."),
-                    ("Total Slots", "Total sessions planned (lecture + practice + exam)."),
-                    ("Lec %", "Lecture Delivery % — % of planned lecture sessions delivered."),
-                    ("Prac %", "Practice Delivery % — % of planned practice sessions delivered."),
-                    ("Exam %", "Exam Delivery % — % of planned exam sessions delivered."),
-                    ("Completion %", "Overall content completion % for this course based on portal progress data."),
-                    ("Quiz Pass %", "% of classroom quiz student–quiz pairs where best attempt score ≥ 80% for this course."),
-                    ("Skill Pass %", "% of students who passed the skill assessment for this course (score ≥ 80%)."),
+            with st.expander("Metric definitions", expanded=False):
+                _cm_metrics = [
+                    ("Course",        "Subject / course name for the semester."),
+                    ("Delivered",     "Total number of sessions delivered for this course."),
+                    ("Planned",       "Total number of sessions planned for this course."),
+                    ("Lec Slots",     "Number of lecture sessions planned."),
+                    ("Prac Slots",    "Number of practice sessions planned."),
+                    ("Exam Slots",    "Number of exam sessions planned."),
+                    ("Total Slots",   "Total sessions planned (lecture + practice + exam)."),
+                    ("Lec %",         "Percentage of planned lecture sessions delivered."),
+                    ("Prac %",        "Percentage of planned practice sessions delivered."),
+                    ("Exam %",        "Percentage of planned exam sessions delivered."),
+                    ("Completion %",  "Percentage of content units completed by students for this course."),
+                    ("Quiz Pass %",   "Percentage of classroom quiz participants who scored ≥ 80% for this course."),
+                    ("Skill Pass %",  "Percentage of students who scored ≥ 80% in the skill assessment for this course."),
                 ]
-                _c1, _c2 = st.columns(2)
-                _cmid = len(_cm_cols) // 2
-                with _c1:
-                    for _col, _desc in _cm_cols[:_cmid]:
-                        st.markdown(f"**{_col}**  \n{_desc}")
-                        st.divider()
-                with _c2:
-                    for _col, _desc in _cm_cols[_cmid:]:
-                        st.markdown(f"**{_col}**  \n{_desc}")
-                        st.divider()
+                _cm_items = "".join(
+                    f'<li style="margin-bottom:10px;">'
+                    f'<code style="color:#059669;background:rgba(5,150,105,.08);'
+                    f'padding:2px 8px;border-radius:4px;font-size:0.85em;">{m}</code>'
+                    f' : {d}'
+                    f'</li>'
+                    for m, d in _cm_metrics
+                )
+                st.markdown(
+                    f'<ul style="list-style:disc;padding-left:20px;line-height:1.8;">{_cm_items}</ul>',
+                    unsafe_allow_html=True,
+                )
 
             clicked = render_course_matrix(course_rows, selected_course_for_detail)
             if clicked:
