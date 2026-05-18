@@ -2449,19 +2449,20 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
          "semester_course_title", "subject_title"],
     )
 
-    q_where = [
+    # Base WHERE filters (no derived_unit_type — added per-path below)
+    q_where_base = [
         f"LOWER(TRIM(COALESCE(q.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
-        "q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')",
     ]
     window_clause = get_semester_window_clause(semester, batch, "q.institute_name", "q.session_date")
     if window_clause:
-        q_where.append(window_clause)
+        q_where_base.append(window_clause)
     if should_apply_batch_filter(batch):
-        q_where.append(f"LOWER(COALESCE(q.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+        q_where_base.append(f"LOWER(COALESCE(q.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
     if section:
-        q_where.append(f"LOWER(TRIM(COALESCE(q.section_name, ''))) = LOWER('{sql_escape(section)}')")
+        q_where_base.append(f"LOWER(TRIM(COALESCE(q.section_name, ''))) = LOWER('{sql_escape(section)}')")
 
-    where_str = ' AND '.join(q_where)
+    # Primary path: filter by derived_unit_type directly
+    q_where_primary = q_where_base + ["q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')"]
 
     _pass_expr = """(
                 UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
@@ -2489,13 +2490,16 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
                 NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
               ) * 100, 1) AS module_quiz_pass_pct
             FROM {refs["quiz_attempts"]} q
-            WHERE {where_str}
+            WHERE {' AND '.join(q_where_primary)}
               AND TRIM(COALESCE(CAST(q.{qa_course_col} AS STRING), '')) != ''
             GROUP BY course_title
             ORDER BY course_title
         """
     else:
         # ── Fallback: join schedule EXAM sessions for course mapping ──────────
+        # Note: do NOT filter by derived_unit_type here — quiz_attempts rows for
+        # EXAM sessions may carry a different derived_unit_type. The JOIN to EXAM
+        # sessions already scopes results to module quizzes.
         sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
         sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
         sched_course_col = first_existing_column(
@@ -2505,15 +2509,36 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         if not sched_course_col:
             return pd.DataFrame(columns=["course_title", "attempted", "passed", "module_quiz_pass_pct"])
 
+        # Build schedule filters (institute + batch/semester scope)
+        s_where = [
+            f"UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'",
+            f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+            f"TRIM(COALESCE(CAST(s.{sched_course_col} AS STRING), '')) != ''",
+        ]
+        sched_window = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
+        if sched_window:
+            s_where.append(sched_window)
+        if should_apply_batch_filter(batch):
+            s_where.append(f"LOWER(COALESCE(s.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+        if section:
+            s_where.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
         sql = f"""
             WITH exam_sessions AS (
+              -- EXAM sessions: try resource_id first (same pattern as LP_QUIZ),
+              -- fall back to session_id as the quiz identifier.
               SELECT DISTINCT
                 TRIM(CAST(s.{sched_course_col} AS STRING)) AS course_title,
-                CAST(s.session_id AS STRING)               AS quiz_id
+                CAST(COALESCE(
+                  NULLIF(TRIM(CAST(s.resource_id AS STRING)), ''),
+                  CAST(s.session_id AS STRING)
+                ) AS STRING) AS quiz_id
               FROM {refs["schedule"]} s
-              WHERE UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'
-                AND TRIM(COALESCE(CAST(s.session_id       AS STRING), '')) != ''
-                AND TRIM(COALESCE(CAST(s.{sched_course_col} AS STRING), '')) != ''
+              WHERE {' AND '.join(s_where)}
+                AND (
+                  TRIM(COALESCE(CAST(s.resource_id AS STRING), '')) != ''
+                  OR TRIM(COALESCE(CAST(s.session_id AS STRING), '')) != ''
+                )
             )
             SELECT
               r.course_title,
@@ -2530,7 +2555,7 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
               ) * 100, 1) AS module_quiz_pass_pct
             FROM {refs["quiz_attempts"]} q
             JOIN exam_sessions r ON CAST(q.quiz_id AS STRING) = r.quiz_id
-            WHERE {where_str}
+            WHERE {' AND '.join(q_where_base)}
             GROUP BY r.course_title
             ORDER BY r.course_title
         """
