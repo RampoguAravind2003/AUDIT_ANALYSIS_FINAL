@@ -1957,6 +1957,79 @@ def fetch_course_completion_by_course(batch: str, semester: str, institute: str,
 
 
 @st.cache_data(ttl=600, show_spinner=False)
+def fetch_practice_completion_by_course(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
+    """
+    Returns per-course practice completion % from unlocked_units (unit_type='PRACTICE').
+
+    Practice Completion % = completed student×PRACTICE-unit pairs /
+                            (total_students × distinct PRACTICE unit count per course)
+
+    Mirrors fetch_practice_completion() but scoped to course level via content join.
+    Columns returned: course_title, practice_completion_pct
+    """
+    refs = get_table_refs()
+    where_clauses = [
+        f"LOWER(TRIM(COALESCE(uu.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "uu.unit_type = 'PRACTICE'",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "uu.institute_name", "uu.session_date")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(uu.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    if section:
+        where_clauses.append(f"LOWER(TRIM(COALESCE(uu.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    content_table_ref = get_config("BQ_CONTENT_TABLE", DEFAULT_CONTENT_TABLE)
+    content_cols      = fetch_table_columns(content_table_ref, DEFAULT_CONTENT_TABLE)
+    content_cid_col   = first_existing_column(content_cols, ["portal_course_id", "course_id"])
+    content_cte       = (build_content_subquery_with_course_id(refs["content"], content_cid_col)
+                         if content_cid_col else build_content_subquery(refs["content"]))
+
+    roster_where = [f"LOWER(TRIM(COALESCE(u.institute_name, ''))) = LOWER('{sql_escape(institute)}')"]
+    if should_apply_batch_filter(batch):
+        roster_where.append(f"LOWER(COALESCE(u.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    if section:
+        roster_where.append(f"LOWER(TRIM(COALESCE(u.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    sql = f"""
+        WITH
+        content AS ( {content_cte} ),
+        roster AS (
+          SELECT COUNT(DISTINCT u.user_id) AS total_students
+          FROM {refs["users"]} u
+          WHERE {' AND '.join(roster_where)}
+        ),
+        practice_units AS (
+          SELECT
+            c.course_title,
+            COUNT(DISTINCT uu.unit_id) AS practice_unit_count,
+            COUNT(DISTINCT IF(uu.unit_completion_status = 'COMPLETED',
+              CONCAT(CAST(uu.user_id AS STRING), '||', CAST(uu.unit_id AS STRING)), NULL))
+              AS completed_practice_pairs
+          FROM {refs["unlocked_units"]} uu
+          INNER JOIN content c ON uu.unit_id = c.unit_id
+          WHERE {' AND '.join(where_clauses)}
+            AND TRIM(COALESCE(c.course_title, '')) != ''
+          GROUP BY c.course_title
+        )
+        SELECT
+          pu.course_title,
+          ROUND(SAFE_DIVIDE(
+            pu.completed_practice_pairs,
+            NULLIF(r.total_students * pu.practice_unit_count, 0)
+          ) * 100, 1) AS practice_completion_pct
+        FROM practice_units pu
+        CROSS JOIN roster r
+        ORDER BY pu.course_title
+    """
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame(columns=["course_title", "practice_completion_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_course_delivery_stats(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
     """
     Returns per-course planned/delivered totals for a single institute.
@@ -3685,7 +3758,8 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
             "Lecture Delivery %":       _s(row.get("lecture_pct")),
             "Practice Delivery %":      _s(row.get("practice_pct")),
             "Module Quiz Conduction %": _s(row.get("exam_pct")),
-            "Student Completion %":     _s(row.get("completion_pct")),
+            "Student Completion %":      _s(row.get("completion_pct")),
+            "Practice Completion %":    _s(row.get("practice_completion_pct")),
             "CR Quiz Pass %":           _s(row.get("quiz_pass_pct")),
             "Module Quiz Pass %":       _s(row.get("module_quiz_pass_pct")),
             "Skill Pass %":             _s(row.get("skill_pass_pct")),
@@ -3693,7 +3767,7 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
 
     cm_df = pd.DataFrame(display_rows)
     _cm_pct_cols = ["Lecture Delivery %", "Practice Delivery %", "Module Quiz Conduction %",
-                    "Student Completion %", "CR Quiz Pass %", "Module Quiz Pass %", "Skill Pass %"]
+                    "Student Completion %", "Practice Completion %", "CR Quiz Pass %", "Module Quiz Pass %", "Skill Pass %"]
     _cm_styled = _apply_pct_colors(cm_df, _cm_pct_cols)
 
     cm_key = f"course_matrix_table_{st.session_state.get('cm_table_nonce', 0)}"
@@ -3720,6 +3794,7 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
             "Practice Delivery %":      st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%", width=115),
             "Module Quiz Conduction %": st.column_config.NumberColumn("Module Quiz Conduction %", format="%.1f%%", width=130),
             "Student Completion %":     st.column_config.NumberColumn("Student Completion %", format="%.1f%%", width=120),
+            "Practice Completion %":    st.column_config.NumberColumn("Practice Completion %", format="%.1f%%", width=125),
             "CR Quiz Pass %":           st.column_config.NumberColumn("CR Quiz Pass %", format="%.1f%%", width=105),
             "Module Quiz Pass %":       st.column_config.NumberColumn("Module Quiz Pass %", format="%.1f%%", width=115),
             "Skill Pass %":             st.column_config.NumberColumn("Skill Pass %", format="%.1f%%", width=95),
@@ -5994,6 +6069,43 @@ def main():
                 return round(sum(vals) / len(vals), 1) if vals else None
             return None
 
+        # ── Practice completion % per course ──────────────────────────────────
+        with st.spinner("Loading practice completion rates…"):
+            practice_completion_by_course_df = fetch_practice_completion_by_course(batch, semester, selected_university, selected_section)
+
+        _prac_completion_lookup: dict[str, float | None] = {}
+        _prac_completion_by_canonical: dict[str, list[float]] = {}
+        if not practice_completion_by_course_df.empty and "course_title" in practice_completion_by_course_df.columns:
+            for _, _pr in practice_completion_by_course_df.iterrows():
+                _pt = str(_pr.get("course_title") or "").strip()
+                _pv = _pr.get("practice_completion_pct")
+                try:
+                    _pval = None if (_pv is None or pd.isna(_pv)) else float(_pv)
+                except (TypeError, ValueError):
+                    _pval = None
+                if _pt:
+                    _prac_completion_lookup[normalize_text(_pt)] = _pval
+                    _pcanon = normalize_text(
+                        sem_course_titles.get(normalize_text(_pt))
+                        or sem_course_titles.get(normalize_text(normalize_course_name(_pt, semester)))
+                        or normalize_course_name(_pt, semester)
+                    )
+                    if _pval is not None:
+                        _prac_completion_by_canonical.setdefault(_pcanon, []).append(_pval)
+
+        def _course_practice_completion(course_name: str) -> float | None:
+            key = normalize_text(course_name)
+            if key in _prac_completion_lookup:
+                return _prac_completion_lookup[key]
+            for k, v in _prac_completion_lookup.items():
+                if key in k or k in key:
+                    return v
+            canonical_key = normalize_text(normalize_course_name(course_name, semester))
+            if canonical_key in _prac_completion_by_canonical:
+                vals = _prac_completion_by_canonical[canonical_key]
+                return round(sum(vals) / len(vals), 1) if vals else None
+            return None
+
         # portal_course_id map: normalize_text(sem_course_title) → portal_course_id
         with st.spinner("Loading portal course ID map…"):
             _sem_course_portal_ids = fetch_portal_course_id_map(batch, semester)
@@ -6060,11 +6172,12 @@ def main():
                 "total_slots":    ct_row.get("Total Slots"),
                 "lecture_pct":    lecture_pct,
                 "practice_pct":   practice_pct,
-                "exam_pct":              exam_pct,
-                "completion_pct":        completion,
-                "quiz_pass_pct":         _course_quiz_pass(cname),
-                "module_quiz_pass_pct":  _course_module_quiz_pass(cname),
-                "skill_pass_pct":        ct_row.get("Skill Pass %"),
+                "exam_pct":                  exam_pct,
+                "completion_pct":            completion,
+                "practice_completion_pct":   _course_practice_completion(cname),
+                "quiz_pass_pct":             _course_quiz_pass(cname),
+                "module_quiz_pass_pct":      _course_module_quiz_pass(cname),
+                "skill_pass_pct":            ct_row.get("Skill Pass %"),
             })
 
         # ── Course Matrix or Course Detail ─────────────────────────────────────
@@ -6092,8 +6205,9 @@ def main():
                     ("Lec %",         "Percentage of planned lecture sessions delivered."),
                     ("Prac %",        "Percentage of planned practice sessions delivered."),
                     ("Exam %",        "Percentage of planned exam sessions delivered."),
-                    ("Completion %",       "Percentage of content units completed by students for this course."),
-                    ("CR Quiz Pass %",    "Percentage of classroom quiz participants who scored ≥ 80% for this course."),
+                    ("Completion %",          "Percentage of content units completed by students for this course."),
+                    ("Practice Completion %", "Percentage of students who completed the assigned practice sets for this course."),
+                    ("CR Quiz Pass %",        "Percentage of classroom quiz participants who scored ≥ 80% for this course."),
                     ("Module Quiz Pass %","Percentage of module quiz participants who scored ≥ 80% for this course."),
                     ("Skill Pass %",      "Percentage of students who scored ≥ 80% in the skill assessment for this course."),
                 ]
