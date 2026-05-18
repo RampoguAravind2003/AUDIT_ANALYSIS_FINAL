@@ -1365,6 +1365,15 @@ def first_existing_column(columns: set[str], candidates: list[str]):
     return None
 
 
+def module_quiz_name_filter_sql(expr: str) -> str:
+    """
+    Match module quiz labels from schedule-like columns.
+    Rule: starts with quiz or contains module anywhere.
+    """
+    lowered = f"LOWER(COALESCE({expr}, ''))"
+    return f"({lowered} LIKE 'quiz%' OR {lowered} LIKE '%module%')"
+
+
 def bq_column(name: str) -> str:
     return f"`{name.replace('`', '')}`"
 
@@ -2036,8 +2045,8 @@ def fetch_practice_completion_by_course(batch: str, semester: str, institute: st
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_course_delivery_stats(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
     """
-    Returns per-course planned/delivered totals for a single institute.
-    Source: session_adherence table (cumulative rows → MAX per slot → SUM across slots).
+    Returns per-course planned/delivered totals and LPE-style unit counts for a single institute.
+    Source: session_adherence table (cumulative rows → MAX per slot → aggregate by course).
     """
     refs = get_table_refs()
     where_clauses = [
@@ -2063,13 +2072,28 @@ def fetch_course_delivery_stats(batch: str, semester: str, institute: str, secti
           FROM {refs["session_adherence"]} sa
           WHERE {' AND '.join(where_clauses)}
           GROUP BY course, section, session_type, session_name_enum
+        ),
+        section_stats AS (
+          SELECT
+            course,
+            section,
+            SUM(planned)   AS total_planned,
+            COUNT(DISTINCT IF(COALESCE(delivered, 0) > 0, session_name_enum, NULL)) AS total_delivered,
+            COUNT(DISTINCT IF(session_type = 'LECTURE',  session_name_enum, NULL)) AS lecture_slots,
+            COUNT(DISTINCT IF(session_type = 'PRACTICE', session_name_enum, NULL)) AS practice_slots,
+            COUNT(DISTINCT IF(session_type = 'EXAM',     session_name_enum, NULL)) AS exam_slots
+          FROM slots
+          GROUP BY course, section
         )
         SELECT
           course,
-          SUM(planned)   AS total_planned,
-          SUM(delivered) AS total_delivered,
-          ROUND(SAFE_DIVIDE(SUM(delivered), NULLIF(SUM(planned), 0)) * 100, 1) AS adherence_pct
-        FROM slots
+          AVG(total_planned)   AS total_planned,
+          AVG(total_delivered) AS total_delivered,
+          AVG(lecture_slots)   AS lecture_slots,
+          AVG(practice_slots)  AS practice_slots,
+          AVG(exam_slots)      AS exam_slots,
+          ROUND(SAFE_DIVIDE(AVG(total_delivered), NULLIF(AVG(total_planned), 0)) * 100, 1) AS adherence_pct
+        FROM section_stats
         GROUP BY course
         ORDER BY course
     """
@@ -2077,7 +2101,7 @@ def fetch_course_delivery_stats(batch: str, semester: str, institute: str, secti
         return run_query(sql)
     except Exception as e:
         st.error(f"fetch_course_delivery_stats error: {e}")
-        return pd.DataFrame(columns=["course", "total_planned", "total_delivered", "adherence_pct"])
+        return pd.DataFrame(columns=["course", "total_planned", "total_delivered", "lecture_slots", "practice_slots", "exam_slots", "adherence_pct"])
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -2382,12 +2406,15 @@ def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, sec
     )
     if not course_col:
         return pd.DataFrame(columns=["course_title", "exam_conducted", "exam_planned", "exam_conduction_pct"])
+    name_col = first_existing_column(sched_cols, ["session_name_enum", "session_name"])
 
     where_clauses = [
         f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
         f"UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'",
         f"TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''",
     ]
+    if name_col:
+        where_clauses.append(module_quiz_name_filter_sql(f"s.{name_col}"))
     window_clause = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
     if window_clause:
         where_clauses.append(window_clause)
@@ -2509,8 +2536,7 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         if not sched_course_col:
             return pd.DataFrame(columns=["course_title", "attempted", "passed", "module_quiz_pass_pct"])
 
-        # Check if schedule has session_name_enum (used for courses like Quantitative Aptitude
-        # where module quiz session_name_enum starts with 'QUIZ' and acts as the quiz_id)
+        # Check if schedule has session_name_enum (used for module quiz naming-based mapping)
         sched_name_enum_col = first_existing_column(sched_cols, ["session_name_enum", "session_name"])
 
         # Build schedule filters (institute + batch/semester scope)
@@ -2532,17 +2558,17 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         # Build exam_sessions CTE: three candidate quiz_id paths unified via UNION
         #   Path 1: resource_id (populated for most courses — same as LP_QUIZ pattern)
         #   Path 2: session_id (numeric fallback)
-        #   Path 3: session_name_enum starting with 'QUIZ' (Quantitative Aptitude & similar)
+        #   Path 3: session_name_enum starting with quiz or containing module
         if sched_name_enum_col:
             name_enum_union = f"""
               UNION ALL
-              -- Path 3: session_name_enum starts with 'QUIZ' — quiz_id IS the enum value
+              -- Path 3: session_name_enum matches quiz/module naming — quiz_id IS the enum value
               SELECT DISTINCT
                 TRIM(CAST(s.{sched_course_col} AS STRING)) AS course_title,
                 TRIM(CAST(s.{sched_name_enum_col} AS STRING)) AS quiz_id
               FROM {refs["schedule"]} s
               WHERE {s_where_str}
-                AND UPPER(TRIM(COALESCE(CAST(s.{sched_name_enum_col} AS STRING), ''))) LIKE 'QUIZ%'
+                AND {module_quiz_name_filter_sql(f's.{sched_name_enum_col}')}
                 AND TRIM(COALESCE(CAST(s.{sched_name_enum_col} AS STRING), '')) != ''
             """
         else:
@@ -2643,10 +2669,16 @@ def fetch_session_delivery_metrics(batch: str, semester: str) -> pd.DataFrame:
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
                               AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'), s.session_id, NULL)) AS exam_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM', s.session_id, NULL)) AS exam_planned,
-            -- Module Quiz: all EXAM type sessions (unique session_ids across all subjects)
+            -- Module Quiz: EXAM sessions whose name starts with quiz or contains module
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'), s.session_id, NULL)) AS mq_delivered,
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM', s.session_id, NULL)) AS mq_planned
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED')
+                              AND (LOWER(COALESCE(s.session_name_enum, '')) LIKE 'quiz%'
+                                   OR LOWER(COALESCE(s.session_name_enum, '')) LIKE '%module%'),
+                              s.session_id, NULL)) AS mq_delivered,
+            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
+                              AND (LOWER(COALESCE(s.session_name_enum, '')) LIKE 'quiz%'
+                                   OR LOWER(COALESCE(s.session_name_enum, '')) LIKE '%module%'),
+                              s.session_id, NULL)) AS mq_planned
           FROM {refs["schedule"]} s
           WHERE {' AND '.join(schedule_where)}
           GROUP BY institute
@@ -2744,6 +2776,16 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
         topic_filter_parts.append(f"LOWER(COALESCE(t.batch_name, u.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
     topic_window_and_batch_filters = ("AND " + " AND ".join(topic_filter_parts)) if topic_filter_parts else ""
 
+    # Build legacy-assessment-level window/batch filters (applied to assessment_results table)
+    legacy_date_expr_la = "DATE(COALESCE(a.submission_datetime, a.question_start_datetime))"
+    legacy_window_clause = get_semester_window_clause(semester, batch, "u.institute_name", legacy_date_expr_la)
+    legacy_filter_parts: list[str] = []
+    if legacy_window_clause:
+        legacy_filter_parts.append(legacy_window_clause)
+    if should_apply_batch_filter(batch):
+        legacy_filter_parts.append(f"LOWER(COALESCE(u.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    legacy_window_and_batch_filters = ("AND " + " AND ".join(legacy_filter_parts)) if legacy_filter_parts else ""
+
     assessment_topic_ref = refs["assessment_topic"]
 
     sql = f"""
@@ -2810,7 +2852,9 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
           SELECT institute,
             COUNT(DISTINCT assessment_date) AS bs_assessment_dates,
             COUNT(DISTINCT user_id)         AS bs_students_attempted,
-            COUNT(DISTINCT IF(best_score_pct >= 0.80, user_id, NULL)) AS bs_students_passed
+            COUNT(DISTINCT CONCAT(CAST(user_id AS STRING), '||', CAST(assessment_id AS STRING))) AS bs_attempt_pairs,
+            COUNT(DISTINCT IF(best_score_pct >= 0.80,
+              CONCAT(CAST(user_id AS STRING), '||', CAST(assessment_id AS STRING)), NULL)) AS bs_pass_pairs
           FROM best_scores GROUP BY institute
         ),
         -- Graded Assessment scores from assessment_topic (score-based, avoids section_evaluation_result = always PASSED)
@@ -2833,9 +2877,31 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
             COUNT(DISTINCT user_id) AS gs_students_attempted,
             COUNT(DISTINCT IF(best_score_pct >= 0.80, user_id, NULL)) AS gs_students_passed
           FROM graded_scores GROUP BY institute
+        ),
+        -- Legacy academic fallback: assessment_results table (used for Semester 2 where
+        -- data is not in assessment_topic/skill_graded with 'graded assessment' title).
+        -- Excludes skill/graded-assessment-titled rows (same exclusion as fetch_assessment_data).
+        legacy_academic AS (
+          SELECT
+            u.institute_name AS institute,
+            a.user_id,
+            SAFE_DIVIDE(COALESCE(a.user_score, a.actual_score), NULLIF(a.actual_score, 0)) AS score_pct
+          FROM {refs["assessment"]} a
+          JOIN {refs["users"]} u ON u.user_id = a.user_id
+          WHERE TRIM(COALESCE(u.institute_name, '')) != ''
+            AND COALESCE(a.actual_score, 0) > 0
+            AND NOT REGEXP_CONTAINS(LOWER(COALESCE(a.question_set_title, '')), r'skill assessment|graded assessment')
+            {legacy_window_and_batch_filters}
+        ),
+        la_totals AS (
+          SELECT
+            institute,
+            COUNT(DISTINCT user_id)                                    AS la_students_attempted,
+            COUNT(DISTINCT IF(score_pct >= 0.80, user_id, NULL))       AS la_students_passed
+          FROM legacy_academic GROUP BY institute
         )
         SELECT
-          st.institute,
+          ir.institute,
           -- Skill metrics come ONLY from assessment_topic (same source as Assessment tab).
           -- Universities with no skill assessment data in assessment_topic → all NULL.
           -- skill_conducted: distinct assessment dates where skill data exists
@@ -2846,13 +2912,13 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
                SAFE_DIVIDE(bs.bs_students_attempted, NULLIF(ir.total_students, 0)),
                NULL) * 100,
           1) AS skill_participation_pct,
-          -- Skill Pass %: distinct students who scored >= 80% / total enrolled
+          -- Skill Pass %: passed skill assessment pairs / attempted skill assessment pairs
           ROUND(
             IF(bs.bs_students_attempted > 0,
-               SAFE_DIVIDE(bs.bs_students_passed, NULLIF(ir.total_students, 0)),
+               SAFE_DIVIDE(bs.bs_pass_pairs, NULLIF(bs.bs_attempt_pairs, 0)),
                NULL) * 100,
           1) AS skill_pass_pct,
-          -- Academic Attempt %: score-based (assessment_topic) first; skill_graded fallback
+          -- Academic Attempt %: score-based (assessment_topic) first; skill_graded fallback; legacy table last
           ROUND(
             COALESCE(
               IF(gs.gs_students_attempted > 0,
@@ -2860,9 +2926,12 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
                  NULL),
               IF(st.academic_students_attempted > 0,
                  SAFE_DIVIDE(st.academic_students_attempted, NULLIF(ir.total_students, 0)),
+                 NULL),
+              IF(la.la_students_attempted > 0,
+                 SAFE_DIVIDE(la.la_students_attempted, NULLIF(ir.total_students, 0)),
                  NULL)
             ) * 100, 1) AS academic_attempt_pct,
-          -- Academic Pass %: score-based (>= 80% from assessment_topic) first; evaluation_result fallback
+          -- Academic Pass %: score-based (>= 80%) first; evaluation_result fallback; legacy table last
           ROUND(
             COALESCE(
               IF(gs.gs_students_attempted > 0,
@@ -2870,13 +2939,17 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
                  NULL),
               IF(st.academic_students_passed > 0,
                  SAFE_DIVIDE(st.academic_students_passed, NULLIF(ir.total_students, 0)),
+                 NULL),
+              IF(la.la_students_attempted > 0,
+                 SAFE_DIVIDE(la.la_students_passed, NULLIF(ir.total_students, 0)),
                  NULL)
             ) * 100, 1) AS academic_pass_pct
-        FROM sg_totals st
-        LEFT JOIN institute_roster ir ON ir.institute = st.institute
-        LEFT JOIN bs_totals bs ON bs.institute = st.institute
-        LEFT JOIN gs_totals gs ON gs.institute = st.institute
-        ORDER BY st.institute
+        FROM institute_roster ir
+        LEFT JOIN sg_totals st ON st.institute = ir.institute
+        LEFT JOIN bs_totals bs ON bs.institute = ir.institute
+        LEFT JOIN gs_totals gs ON gs.institute = ir.institute
+        LEFT JOIN la_totals la ON la.institute = ir.institute
+        ORDER BY ir.institute
     """
     try:
         return run_query(sql)
@@ -3721,6 +3794,23 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
     lecture_df = filtered[filtered["session_type"] == "LECTURE"]
     practice_df = filtered[filtered["session_type"] == "PRACTICE"]
     exam_df = filtered[filtered["session_type"] == "EXAM"]
+    section_names = [
+        section_name
+        for section_name in sorted(filtered["section"].dropna().astype(str).unique().tolist())
+        if section_name and section_name.strip().lower() != "unknown"
+    ]
+    if not section_names:
+        section_names = sorted(filtered["section"].dropna().astype(str).unique().tolist())
+
+    def _planned_slots(course_df: pd.DataFrame, session_type: str) -> float:
+        scoped = course_df[course_df["session_type"] == session_type]
+        if scoped.empty:
+            return 0.0
+        if section:
+            return float(scoped["sessions"].sum())
+        per_section = scoped.groupby("section")["sessions"].sum()
+        values = [float(per_section.get(sec, 0.0)) for sec in section_names]
+        return float(sum(values) / len(values)) if values else 0.0
 
     course_records = []
     assessment_filtered = assessment_df[assessment_df["university"] == institute].copy()
@@ -3733,6 +3823,9 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
         lecture = summarize_type(course_df, "LECTURE")
         practice = summarize_type(course_df, "PRACTICE")
         exam = summarize_type(course_df, "EXAM")
+        lecture_slots = _planned_slots(course_df, "LECTURE")
+        practice_slots = _planned_slots(course_df, "PRACTICE")
+        exam_slots = _planned_slots(course_df, "EXAM")
         assessment_row = assessment_filtered[assessment_filtered["normalized_course"] == course_name]
         overall_assessment_row = summarize_assessment_subset(assessment_row)
         skill_assessment_row = summarize_assessment_subset(assessment_row, "Skill Assessment")
@@ -3743,10 +3836,10 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
         course_records.append(
             {
                 "Course": _display_course(course_name),
-                "Lecture Slots": round(lecture["sessions"], 2) if lecture else 0,
-                "Practice Slots": round(practice["sessions"], 2) if practice else 0,
-                "Exam Slots": round(exam["sessions"], 2) if exam else 0,
-                "Total Slots": round((lecture["sessions"] if lecture else 0) + (practice["sessions"] if practice else 0) + (exam["sessions"] if exam else 0), 2),
+                "Lecture Slots": round(lecture_slots, 2),
+                "Practice Slots": round(practice_slots, 2),
+                "Exam Slots": round(exam_slots, 2),
+                "Total Slots": round(lecture_slots + practice_slots + exam_slots, 2),
                 "Lecture Delivery %": round(lecture["completion"], 1) if lecture else None,
                 "Practice Delivery %": round(practice["completion"], 1) if practice else None,
                 "Exam Delivery %": round(exam["completion"], 1) if exam else None,
@@ -3887,10 +3980,11 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
         display_rows.append({
             "#":                        i + 1,
             "Course":                   cname,
-            "Planned Lecture":          _s(row.get("lecture_slots")),
-            "Planned Practice":         _s(row.get("practice_slots")),
-            "Planned Module Quiz":      _s(row.get("exam_slots")),
-            "Total":                    _s(row.get("total_slots")),
+            "Planned Lecture":          round(_s(row.get("lecture_slots")) or 0),
+            "Planned Practice":         round(_s(row.get("practice_slots")) or 0),
+            "Planned Module Quiz":      round(_s(row.get("exam_slots")) or 0),
+            "Planned Content Slots":    round(_s(row.get("total_slots")) or 0),
+            "Delivered Content Slots Till Date (Avg)": round(_s(row.get("delivered")) or 0),
             "Lecture Delivery %":       _s(row.get("lecture_pct")),
             "Practice Delivery %":      _s(row.get("practice_pct")),
             "Module Quiz Conduction %": _s(row.get("exam_pct")),
@@ -3925,7 +4019,8 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
             "Planned Lecture":          st.column_config.NumberColumn("Planned Lecture", format="%.0f", width=100),
             "Planned Practice":         st.column_config.NumberColumn("Planned Practice", format="%.0f", width=100),
             "Planned Module Quiz":      st.column_config.NumberColumn("Planned Module Quiz", format="%.0f", width=110),
-            "Total":                    st.column_config.NumberColumn("Total", format="%.0f", width=60),
+            "Planned Content Slots":    st.column_config.NumberColumn("Planned Content Slots", format="%.0f", width=60),
+            "Delivered Content Slots Till Date (Avg)": st.column_config.NumberColumn("Delivered Content Slots Till Date (Avg)", format="%.0f", width=140),
             "Lecture Delivery %":       st.column_config.NumberColumn("Lecture Delivery %", format="%.1f%%", width=110),
             "Practice Delivery %":      st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%", width=115),
             "Module Quiz Conduction %": st.column_config.NumberColumn("Module Quiz Conduction %", format="%.1f%%", width=130),
@@ -3954,8 +4049,8 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
 
 def render_course_detail_header(course_name: str, delivery_row: dict | None, units_df: pd.DataFrame):
     """Renders the course title, subtitle, and stats bar."""
-    delivered_total = int(delivery_row["total_delivered"]) if delivery_row and delivery_row.get("total_delivered") is not None else "—"
-    planned_total   = int(delivery_row["total_planned"])   if delivery_row and delivery_row.get("total_planned")   is not None else "—"
+    delivered_total = round(float(delivery_row["total_delivered"])) if delivery_row and delivery_row.get("total_delivered") is not None else None
+    planned_total   = round(float(delivery_row["total_planned"]))   if delivery_row and delivery_row.get("total_planned")   is not None else None
     adherence_pct   = delivery_row["adherence_pct"]        if delivery_row else None
 
     # Unit counts from units_df (fetch_course_session_units)
@@ -3990,6 +4085,8 @@ def render_course_detail_header(course_name: str, delivery_row: dict | None, uni
     exam_val, exam_sub = _unit_stat(exam_done, exam_total)
 
     adh_sub = f"{adherence_pct:.1f}% adherence" if adherence_pct is not None else ""
+    delivered_str = f"{delivered_total:d}" if delivered_total is not None else "—"
+    planned_str = f"{planned_total:d}" if planned_total is not None else "—"
 
     adh_accent = "accent-green" if adherence_pct is not None and adherence_pct >= 75 else ("accent-orange" if adherence_pct is not None and adherence_pct >= 50 else "")
     st.markdown(
@@ -3998,15 +4095,15 @@ def render_course_detail_header(course_name: str, delivery_row: dict | None, uni
           <div style='width:4px;height:1.4em;background:linear-gradient(180deg,#6366f1,#4f46e5);border-radius:999px;flex-shrink:0'></div>
           <span class='cd-title'>{escape_html(course_name)}</span>
         </div>
-        <div class='cd-subtitle' style='padding-left:14px'>{escape_html(str(delivered_total))}/{escape_html(str(planned_total))} sessions delivered</div>
+        <div class='cd-subtitle' style='padding-left:14px'>{escape_html(delivered_str)}/{escape_html(planned_str)} content slots delivered till date on average</div>
         <div class='cd-stats-bar'>
           <div class='cd-stat-item'>
-            <div class='cd-stat-label'>&#128203; Sessions Planned</div>
-            <div class='cd-stat-value'>{escape_html(str(planned_total))}</div>
+            <div class='cd-stat-label'>&#128203; Planned Content Slots</div>
+            <div class='cd-stat-value'>{escape_html(planned_str)}</div>
           </div>
           <div class='cd-stat-item'>
-            <div class='cd-stat-label'>&#9989; Sessions Delivered</div>
-            <div class='cd-stat-value {adh_accent}'>{escape_html(str(delivered_total))}</div>
+            <div class='cd-stat-label'>&#9989; Delivered Content Slots Till Date</div>
+            <div class='cd-stat-value {adh_accent}'>{escape_html(delivered_str)}</div>
             <div class='cd-stat-sub'>{escape_html(adh_sub)}</div>
           </div>
           <div class='cd-stat-item'>
@@ -6329,14 +6426,17 @@ def main():
             exam_pct = ct_row.get("Exam Delivery %")
             if exam_pct is None:
                 exam_pct = _course_exam_conduction(cname)
+            lecture_slots = dr.get("lecture_slots") if dr and dr.get("lecture_slots") is not None else ct_row.get("Lecture Slots")
+            practice_slots = dr.get("practice_slots") if dr and dr.get("practice_slots") is not None else ct_row.get("Practice Slots")
+            exam_slots = dr.get("exam_slots") if dr and dr.get("exam_slots") is not None else ct_row.get("Exam Slots")
             course_rows.append({
                 "course":         cname,
                 "delivered":      delivered,
                 "planned":        planned,
-                "lecture_slots":  ct_row.get("Lecture Slots"),
-                "practice_slots": ct_row.get("Practice Slots"),
-                "exam_slots":     ct_row.get("Exam Slots"),
-                "total_slots":    ct_row.get("Total Slots"),
+                "lecture_slots":  lecture_slots,
+                "practice_slots": practice_slots,
+                "exam_slots":     exam_slots,
+                "total_slots":    (lecture_slots or 0) + (practice_slots or 0) + (exam_slots or 0),
                 "lecture_pct":    lecture_pct,
                 "practice_pct":   practice_pct,
                 "exam_pct":                  exam_pct,
@@ -6359,6 +6459,9 @@ def main():
                     f"<div class='info-card'>Showing {escape_html(len(course_table))} core courses · {escape_html(hidden_courses)} support courses hidden.</div>",
                     unsafe_allow_html=True,
                 )
+
+            if not selected_section:
+                st.caption("In All Sections view, Planned Lecture, Planned Practice, and Planned Module Quiz are averaged per section for each course.")
 
             with st.expander("Metric definitions", expanded=False):
                 _cm_metrics = [
