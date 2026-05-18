@@ -4398,7 +4398,7 @@ def render_tab_assessments(
             label_visibility="collapsed",
         )
 
-    with st.spinner("Loading skill assessment dataâ€¦"):
+    with st.spinner("Loading skill assessment data..."):
         sa_df = fetch_skill_assessment_detail(batch, semester, institute, selected_section)
 
     if sa_df.empty:
@@ -5486,11 +5486,11 @@ def render_copilot(batch: str, semester: str) -> None:
     st.markdown(
         """
         <div style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px'>
-          <span style='background:#ede9fe;color:#4f46e5;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>ðŸŠ Query Metrics</span>
-          <span style='background:#dcfce7;color:#15803d;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>âš ï¸ Detect Deviations</span>
-          <span style='background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>ðŸ"" Escalation Emails</span>
-          <span style='background:#e0f2fe;color:#0369a1;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>ðŸŽ¯ KPI Threshold Check</span>
-          <span style='background:#fce7f3;color:#9d174d;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>ðŸ‹ Generate Reports</span>
+          <span style='background:#ede9fe;color:#4f46e5;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>Query Metrics</span>
+          <span style='background:#dcfce7;color:#15803d;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>Detect Deviations</span>
+          <span style='background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>Escalation Emails</span>
+          <span style='background:#e0f2fe;color:#0369a1;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>KPI Threshold Check</span>
+          <span style='background:#fce7f3;color:#9d174d;padding:4px 12px;border-radius:999px;font-size:0.8rem;font-weight:600'>Generate Reports</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -5519,7 +5519,7 @@ def render_copilot(batch: str, semester: str) -> None:
 
     # â€â€ Render existing messages â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
     for msg in st.session_state["copilot_display"]:
-        with st.chat_message(msg["role"], avatar="ðŸ¤–" if msg["role"] == "assistant" else None):
+        with st.chat_message(msg["role"], avatar=None):
             st.markdown(msg["content"])
             # Show tool call log if present
             if msg["role"] == "assistant" and msg.get("tool_log"):
@@ -5547,12 +5547,13 @@ def render_copilot(batch: str, semester: str) -> None:
     pending = st.session_state.pop("copilot_pending", None)
 
     # â€â€ Chat input â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
-    user_input = st.chat_input("Ask about operations, KPIs, deviations, or request an escalation emailâ€¦")
+    user_input = st.chat_input("Ask about operations, KPIs, deviations, or request an escalation email...")
+
     prompt = pending or user_input
     if not prompt:
         # Clear chat button
         if st.session_state["copilot_display"]:
-            if st.button("ðŸ—'ï¸ Clear conversation", key="clear_copilot"):
+            if st.button("Clear conversation", key="clear_copilot"):
                 st.session_state["copilot_display"] = []
                 st.rerun()
         return
@@ -5572,7 +5573,7 @@ def render_copilot(batch: str, semester: str) -> None:
     tool_log: list[dict] = []
     final_text = ""
 
-    with st.chat_message("assistant", avatar="ðŸ¤–"):
+    with st.chat_message("assistant", avatar=None):
         status_placeholder = st.empty()
         response_placeholder = st.empty()
         accumulated_text = ""
@@ -5591,13 +5592,14 @@ def render_copilot(batch: str, semester: str) -> None:
                 if etype == "tool_start":
                     tool_name = event["tool"]
                     nice = {
-                        "run_bigquery_sql": "ðŸ Querying BigQueryâ€¦",
-                        "list_tables": "ðŸ‹ Listing tablesâ€¦",
-                        "get_table_schema": "ðŸ—‚ï¸ Fetching schemaâ€¦",
-                        "check_kpi_thresholds": "ðŸŠ Checking KPI thresholdsâ€¦",
-                        "send_escalation_email": "🔧 Sending escalation emailâ€¦",
-                        "build_escalation_report": "ðŸ Building escalation reportâ€¦",
-                    }.get(tool_name, f"âš™ï¸ Running {tool_name}â€¦")
+                        "run_bigquery_sql": "Querying BigQuery...",
+                        "list_tables": "Listing tables...",
+                        "get_table_schema": "Fetching schema...",
+                        "check_kpi_thresholds": "Checking KPI thresholds...",
+                        "send_escalation_email": "Sending escalation email...",
+                        "build_escalation_report": "Building escalation report...",
+                    }.get(tool_name, f"Running {tool_name}...")
+
                     status_placeholder.info(nice)
                     tool_log.append({"tool": tool_name, "input": event.get("input", {}), "result": {}})
 
@@ -5671,7 +5673,7 @@ def main():
         # â€â€ Mode toggle â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
         _mode = st.session_state.get("app_mode", "dashboard")
         _copilot_active = _mode == "copilot"
-        _mode_label = "ðŸŠ Back to Dashboard" if _copilot_active else "ðŸ¤– AI Copilot"
+        _mode_label = "Back to Dashboard" if _copilot_active else "AI Copilot"
         if st.button(_mode_label, use_container_width=True, key="mode_toggle"):
             st.session_state["app_mode"] = "dashboard" if _copilot_active else "copilot"
             st.rerun()
@@ -5708,7 +5710,7 @@ def main():
         )
 
         st.markdown("<hr style='margin:14px 0;border:none;border-top:1px solid rgba(165,180,252,0.15)'>", unsafe_allow_html=True)
-        load_clicked = st.button("â†º  Refresh Data", type="primary", use_container_width=True)
+        load_clicked = st.button("Refresh Data", type="primary", use_container_width=True)
 
     # â€â€ Copilot mode -- skip dashboard entirely â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
     if st.session_state.get("app_mode") == "copilot":
@@ -6175,7 +6177,7 @@ def main():
         if analysis_type == "overview":
             nav_col_1, nav_col_2, nav_col_3 = st.columns([0.34, 1.35, 1.1], gap="medium", vertical_alignment="bottom")
             with nav_col_1:
-                if st.button("â†", key="overview_back_arrow", use_container_width=True):
+                if st.button("Back", key="overview_back_arrow", type="primary", use_container_width=True):
                     st.session_state.pop("selected_course_for_detail", None)
                     queue_overview_navigation()
                     st.rerun()
@@ -6205,10 +6207,10 @@ def main():
             )
 
         # â€â€ Fetch planned/delivered per course from session_adherence â€â€â€â€â€â€â€â€â€â€
-        with st.spinner("Loading course delivery statsâ€¦"):
+        with st.spinner("Loading course delivery stats..."):
             delivery_stats_df = fetch_course_delivery_stats(batch, semester, selected_university, selected_section)
 
-        with st.spinner("Loading course completion ratesâ€¦"):
+        with st.spinner("Loading course completion rates..."):
             completion_by_course_df = fetch_course_completion_by_course(batch, semester, selected_university, selected_section)
 
         _completion_course_lookup: dict[str, float | None] = {}
@@ -6237,7 +6239,7 @@ def main():
                     _completion_by_portal_id[_pid] = _cval
 
         # â€â€ Module quiz conduction % per course from schedule EXAM sessions â€â€â€
-        with st.spinner("Loading module quiz conduction ratesâ€¦"):
+        with st.spinner("Loading module quiz conduction rates..."):
             exam_delivery_by_course_df = fetch_exam_delivery_by_course(batch, semester, selected_university, selected_section)
 
         _exam_conduction_lookup: dict[str, float | None] = {}
@@ -6266,7 +6268,7 @@ def main():
             return None
 
         # â€â€ Quiz pass % per course via schedule LP_QUIZ â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
-        with st.spinner("Loading quiz pass ratesâ€¦"):
+        with st.spinner("Loading quiz pass rates..."):
             quiz_pass_by_course_df = fetch_quiz_pass_by_course(batch, semester, selected_university, selected_section)
 
         _quiz_pass_course_lookup: dict[str, float | None] = {}
@@ -6306,7 +6308,7 @@ def main():
             return None
 
         # â€â€ Module quiz pass % per course via schedule MODULE_QUIZ/COURSE_QUIZ â€â€
-        with st.spinner("Loading module quiz pass ratesâ€¦"):
+        with st.spinner("Loading module quiz pass rates..."):
             module_quiz_pass_by_course_df = fetch_module_quiz_pass_by_course(batch, semester, selected_university, selected_section)
 
         _mq_pass_course_lookup: dict[str, float | None] = {}
@@ -6344,7 +6346,7 @@ def main():
             return None
 
         # â€â€ Practice completion % per course â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
-        with st.spinner("Loading practice completion ratesâ€¦"):
+        with st.spinner("Loading practice completion rates..."):
             practice_completion_by_course_df = fetch_practice_completion_by_course(batch, semester, selected_university, selected_section)
 
         _prac_completion_lookup: dict[str, float | None] = {}
@@ -6381,7 +6383,7 @@ def main():
             return None
 
         # portal_course_id map: normalize_text(sem_course_title) â†' portal_course_id
-        with st.spinner("Loading portal course ID mapâ€¦"):
+        with st.spinner("Loading portal course ID map..."):
             _sem_course_portal_ids = fetch_portal_course_id_map(batch, semester)
 
         def _course_completion(course_name: str) -> float | None:
