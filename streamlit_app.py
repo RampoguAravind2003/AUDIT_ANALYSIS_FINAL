@@ -5492,17 +5492,17 @@ def main():
 
         with st.expander("Metric definitions", expanded=False):
             _ov_metrics = [
-                ("Class Room Quizzes Attempt %",            "Percentage of quiz-attempted students who scored ≥ 80% in classroom quizzes."),
+                ("Class Room Quizzes Attempt %",            "Students who attempted classroom quizzes to the total students"),
                 ("Class Room Quizzes Pass %",               "Percentage of quiz-attempted students who scored ≥ 80% in classroom quizzes."),
                 ("Practice Delivery %",                     "Percentage of delivered practice sessions conducted till date."),
                 ("Practice Completion %",                   "Percentage of students who completed the assigned practice sets by attempting them."),
-                ("Module Quiz Conduction %",                "Percentage of planned module quizzes that were successfully conducted till date."),
+                ("Module Quiz Conduction %",                "Percentage of planned module quizzes that were successfully conducted till date.to the total planned module quizzes"),
                 ("Module Quiz Student Participation %",     "Percentage of session-attending students who participated in module quizzes."),
                 ("Module Quiz Pass %",                      "Percentage of module quiz participants who scored ≥ 80%."),
-                ("Skill Assessment Conduction %",           "Percentage of planned skill assessments that were successfully conducted till date."),
+                ("Skill Assessment Conduction %",           "Percentage of planned skill assessments that were successfully conducted till date.to the total planned skill assessments"),
                 ("Skill Assessment Student Participation %","Percentage of session-attending students who participated in skill assessments."),
                 ("Skill Assessment Pass %",                 "Percentage of students who scored ≥ 80% in skill assessments."),
-                ("Academic Assessments Pass %",             "Percentage of students who cleared university academic assessments/exams based on university criteria or ≥ 90% benchmark where criteria is unavailable."),
+                ("Academic Assessments Pass %",             "Percentage of students who cleared university academic assessments/exams based on university criteria"),
             ]
             _metric_items = "".join(
                 f'<li style="margin-bottom:10px;">'
