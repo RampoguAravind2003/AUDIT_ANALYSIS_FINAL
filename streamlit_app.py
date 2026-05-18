@@ -2322,18 +2322,27 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
 
     if course_col:
         # Primary path:
-        #   schedule session_type='EXAM' → resource_id = quiz_id → quiz_attempts
+        #   schedule session_type='EXAM' → session_id = quiz_id in quiz_attempts
+        #   (Module Quiz Conduction % uses session_id for EXAM rows — same ID
+        #    that quiz_attempts stores as quiz_id for MODULE_QUIZ/COURSE_QUIZ types.)
+        #   resource_id is used as a fallback when session_id is absent.
         #   Pass = best_attempt_evaluation_result IN ('PASS','PASSED'),
         #          or score >= 80 when evaluation_result is absent.
         sql = f"""
             WITH exam_quiz_ids AS (
               SELECT DISTINCT
                 TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
-                CAST(s.resource_id AS STRING)         AS quiz_id
+                CAST(COALESCE(
+                  NULLIF(TRIM(CAST(s.session_id AS STRING)), ''),
+                  NULLIF(TRIM(CAST(s.resource_id AS STRING)), '')
+                ) AS STRING) AS quiz_id
               FROM {refs["schedule"]} s
               WHERE UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'
-                AND TRIM(COALESCE(CAST(s.resource_id AS STRING),    '')) != ''
                 AND TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''
+                AND COALESCE(
+                  NULLIF(TRIM(CAST(s.session_id AS STRING)), ''),
+                  NULLIF(TRIM(CAST(s.resource_id AS STRING)), '')
+                ) IS NOT NULL
             )
             SELECT
               r.course_title,
@@ -4328,8 +4337,12 @@ def inject_custom_css():
                 position: absolute;
                 top: 0; left: 0; right: 0;
             }
-            [data-testid="stSidebar"] * { color: #ffffff; }
-            [data-testid="stSidebar"] label p { color: #ffffff; font-size: 0.82rem; }
+            [data-testid="stSidebar"] * { color: #ffffff !important; }
+            [data-testid="stSidebar"] label p { color: #ffffff !important; font-size: 0.82rem; }
+            [data-testid="stSidebar"] .stRadio label p { color: #ffffff !important; }
+            [data-testid="stSidebar"] .stRadio label span { color: #ffffff !important; }
+            [data-testid="stSidebar"] p { color: #ffffff !important; }
+            [data-testid="stSidebar"] span { color: #ffffff !important; }
             [data-testid="stSidebar"] [data-baseweb="select"] > div {
                 background: rgba(255,255,255,0.07);
                 border: 1px solid rgba(165,180,252,0.2);
