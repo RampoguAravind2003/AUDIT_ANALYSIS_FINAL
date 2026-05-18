@@ -2321,13 +2321,17 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
         q_where.append(f"LOWER(TRIM(COALESCE(q.section_name, ''))) = LOWER('{sql_escape(section)}')")
 
     if course_col:
+        # Primary path:
+        #   schedule session_type='EXAM' → resource_id = quiz_id → quiz_attempts
+        #   Pass = best_attempt_evaluation_result IN ('PASS','PASSED'),
+        #          or score >= 80 when evaluation_result is absent.
         sql = f"""
-            WITH mq_ids AS (
-              SELECT
+            WITH exam_quiz_ids AS (
+              SELECT DISTINCT
                 TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
                 CAST(s.resource_id AS STRING)         AS quiz_id
               FROM {refs["schedule"]} s
-              WHERE UPPER(TRIM(CAST(s.resource_type AS STRING))) IN ('MODULE_QUIZ', 'COURSE_QUIZ')
+              WHERE UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'
                 AND TRIM(COALESCE(CAST(s.resource_id AS STRING),    '')) != ''
                 AND TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''
             )
@@ -2335,34 +2339,57 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
               r.course_title,
               COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
                 AS attempted,
-              COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+              COUNT(DISTINCT CASE
+                WHEN UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
+                  OR (
+                    (q.best_attempt_evaluation_result IS NULL
+                      OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
+                    AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                  )
                 THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
               END) AS passed,
               ROUND(SAFE_DIVIDE(
-                COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                COUNT(DISTINCT CASE
+                  WHEN UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
+                    OR (
+                      (q.best_attempt_evaluation_result IS NULL
+                        OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
+                      AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                    )
                   THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
                 END),
                 NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
               ) * 100, 1) AS module_quiz_pass_pct
             FROM {refs["quiz_attempts"]} q
-            JOIN mq_ids r ON CAST(q.quiz_id AS STRING) = r.quiz_id
+            JOIN exam_quiz_ids r ON CAST(q.quiz_id AS STRING) = r.quiz_id
             WHERE {' AND '.join(q_where)}
-              AND q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')
             GROUP BY r.course_title
             ORDER BY r.course_title
         """
     else:
-        # Fallback: use derived_unit_type directly without course mapping
+        # Fallback: no course mapping available — use derived_unit_type for module quizzes
         sql = f"""
             SELECT
               CAST(q.quiz_id AS STRING) AS course_title,
               COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING)))
                 AS attempted,
-              COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+              COUNT(DISTINCT CASE
+                WHEN UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
+                  OR (
+                    (q.best_attempt_evaluation_result IS NULL
+                      OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
+                    AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                  )
                 THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
               END) AS passed,
               ROUND(SAFE_DIVIDE(
-                COUNT(DISTINCT CASE WHEN SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                COUNT(DISTINCT CASE
+                  WHEN UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
+                    OR (
+                      (q.best_attempt_evaluation_result IS NULL
+                        OR TRIM(CAST(q.best_attempt_evaluation_result AS STRING)) = '')
+                      AND SAFE_CAST(q.best_attempt_percentage_score AS FLOAT64) >= 80
+                    )
                   THEN CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))
                 END),
                 NULLIF(COUNT(DISTINCT CONCAT(CAST(q.user_id AS STRING), '||', CAST(q.quiz_id AS STRING))), 0)
@@ -4301,13 +4328,13 @@ def inject_custom_css():
                 position: absolute;
                 top: 0; left: 0; right: 0;
             }
-            [data-testid="stSidebar"] * { color: #c7d2fe; }
-            [data-testid="stSidebar"] label p { color: #a5b4fc; font-size: 0.82rem; }
+            [data-testid="stSidebar"] * { color: #ffffff; }
+            [data-testid="stSidebar"] label p { color: #ffffff; font-size: 0.82rem; }
             [data-testid="stSidebar"] [data-baseweb="select"] > div {
                 background: rgba(255,255,255,0.07);
                 border: 1px solid rgba(165,180,252,0.2);
                 border-radius: var(--radius-md);
-                color: #e0e7ff;
+                color: #ffffff;
             }
             [data-testid="stSidebar"] .stRadio > div {
                 background: transparent;
