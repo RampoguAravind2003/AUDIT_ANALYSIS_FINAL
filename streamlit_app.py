@@ -739,6 +739,8 @@ NON_CORE_COURSES_BY_SEMESTER = {
         "JavaScript Essentials",
         "NIAT-DSA",
         "NIAT - DSA",
+        "Test Based Learning",
+        "Text Based Learning",
     },
     "Semester 2": {
         "Assessment",
@@ -746,6 +748,8 @@ NON_CORE_COURSES_BY_SEMESTER = {
         "Module Assessment 5",
         "Intro to Tech",
         "Intro to Software Development",
+        "Test Based Learning",
+        "Text Based Learning",
     },
 }
 
@@ -2360,6 +2364,63 @@ def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str, section
 
 
 @st.cache_data(ttl=600, show_spinner=False)
+def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
+    """
+    Returns per-course module quiz conduction % from the schedule table.
+    Uses session_type='EXAM' rows (same source as institute-level module quiz conduction).
+
+    Conduction % = conducted EXAM sessions / planned EXAM sessions per course × 100.
+    Columns returned: course_title, exam_conducted, exam_planned, exam_conduction_pct
+    """
+    refs = get_table_refs()
+
+    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
+    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
+    course_col = first_existing_column(
+        sched_cols,
+        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
+    )
+    if not course_col:
+        return pd.DataFrame(columns=["course_title", "exam_conducted", "exam_planned", "exam_conduction_pct"])
+
+    where_clauses = [
+        f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        f"UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'",
+        f"TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if should_apply_batch_filter(batch):
+        where_clauses.append(f"LOWER(COALESCE(s.batch_name, '')) LIKE '%{sql_escape(batch.strip().lower())}%'")
+    if section:
+        where_clauses.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    sql = f"""
+        SELECT
+          TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
+          COUNT(DISTINCT IF(
+            UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+            s.session_id, NULL)) AS exam_conducted,
+          COUNT(DISTINCT s.session_id) AS exam_planned,
+          ROUND(SAFE_DIVIDE(
+            COUNT(DISTINCT IF(
+              UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+              s.session_id, NULL)),
+            NULLIF(COUNT(DISTINCT s.session_id), 0)
+          ) * 100, 1) AS exam_conduction_pct
+        FROM {refs["schedule"]} s
+        WHERE {' AND '.join(where_clauses)}
+        GROUP BY course_title
+        ORDER BY course_title
+    """
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame(columns=["course_title", "exam_conducted", "exam_planned", "exam_conduction_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
     """
     Returns per-subject module quiz pass % from quiz_attempts where
@@ -2727,9 +2788,12 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
           COALESCE(idc.date_count, 0) AS skill_conducted,
           -- Skill Assessment Participation %: unique users attempted / total enrolled
           ROUND(SAFE_DIVIDE(st.skill_students_attempted, NULLIF(ir.total_students, 0)) * 100, 1) AS skill_participation_pct,
-          -- Skill Assessment Pass %: students scored >= 80% in assessment_topic / total enrolled
+          -- Skill Assessment Pass %: score-based (>= 80%) first; fallback to evaluation_result when no topic scores
           ROUND(
-            SAFE_DIVIDE(NULLIF(bs.bs_students_passed, 0), NULLIF(ir.total_students, 0)) * 100,
+            COALESCE(
+              SAFE_DIVIDE(NULLIF(bs.bs_students_passed, 0), NULLIF(ir.total_students, 0)),
+              SAFE_DIVIDE(NULLIF(st.skill_pairs_passed, 0),  NULLIF(ir.total_students, 0))
+            ) * 100,
           1) AS skill_pass_pct,
           -- Academic Attempt %: students with graded assessment score records / total enrolled
           ROUND(SAFE_DIVIDE(NULLIF(gs.gs_students_attempted, 0), NULLIF(ir.total_students, 0)) * 100, 1) AS academic_attempt_pct,
@@ -5995,6 +6059,35 @@ def main():
                 if _pid:
                     _completion_by_portal_id[_pid] = _cval
 
+        # ── Module quiz conduction % per course from schedule EXAM sessions ───
+        with st.spinner("Loading module quiz conduction rates…"):
+            exam_delivery_by_course_df = fetch_exam_delivery_by_course(batch, semester, selected_university, selected_section)
+
+        _exam_conduction_lookup: dict[str, float | None] = {}
+        if not exam_delivery_by_course_df.empty and "course_title" in exam_delivery_by_course_df.columns:
+            for _, _er in exam_delivery_by_course_df.iterrows():
+                _et = str(_er.get("course_title") or "").strip()
+                _ev = _er.get("exam_conduction_pct")
+                try:
+                    _eval = None if (_ev is None or pd.isna(_ev)) else float(_ev)
+                except (TypeError, ValueError):
+                    _eval = None
+                if _et:
+                    _exam_conduction_lookup[normalize_text(_et)] = _eval
+
+        def _course_exam_conduction(course_name: str) -> float | None:
+            key = normalize_text(course_name)
+            if key in _exam_conduction_lookup:
+                return _exam_conduction_lookup[key]
+            for k, v in _exam_conduction_lookup.items():
+                if key in k or k in key:
+                    return v
+            canonical_key = normalize_text(normalize_course_name(course_name, semester))
+            for k, v in _exam_conduction_lookup.items():
+                if normalize_text(normalize_course_name(k, semester)) == canonical_key:
+                    return v
+            return None
+
         # ── Quiz pass % per course via schedule LP_QUIZ ───────────────────────
         with st.spinner("Loading quiz pass rates…"):
             quiz_pass_by_course_df = fetch_quiz_pass_by_course(batch, semester, selected_university, selected_section)
@@ -6162,6 +6255,8 @@ def main():
             lecture_pct = ct_row.get("Lecture Delivery %")
             practice_pct = ct_row.get("Practice Delivery %")
             exam_pct = ct_row.get("Exam Delivery %")
+            if exam_pct is None:
+                exam_pct = _course_exam_conduction(cname)
             course_rows.append({
                 "course":         cname,
                 "delivered":      delivered,
