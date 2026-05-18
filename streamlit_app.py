@@ -3556,22 +3556,23 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
         cname = row.get("course", "")
         course_index.append(cname)
         display_rows.append({
-            "#":            i + 1,
-            "Course":       cname,
-            "Lec Slots":    _s(row.get("lecture_slots")),
-            "Prac Slots":   _s(row.get("practice_slots")),
-            "Exam Slots":   _s(row.get("exam_slots")),
-            "Total":        _s(row.get("total_slots")),
-            "Lecture %":    _s(row.get("lecture_pct")),
-            "Practice %":   _s(row.get("practice_pct")),
-            "Exam %":       _s(row.get("exam_pct")),
-            "Completion %": _s(row.get("completion_pct")),
-            "Quiz Pass %":  _s(row.get("quiz_pass_pct")),
-            "Skill Pass %": _s(row.get("skill_pass_pct")),
+            "#":                        i + 1,
+            "Course":                   cname,
+            "Planned Lecture":          _s(row.get("lecture_slots")),
+            "Planned Practice":         _s(row.get("practice_slots")),
+            "Planned Module Quiz":      _s(row.get("exam_slots")),
+            "Total":                    _s(row.get("total_slots")),
+            "Lecture Delivery %":       _s(row.get("lecture_pct")),
+            "Practice Delivery %":      _s(row.get("practice_pct")),
+            "Module Quiz Conduction %": _s(row.get("exam_pct")),
+            "Student Completion %":     _s(row.get("completion_pct")),
+            "Quiz Pass %":              _s(row.get("quiz_pass_pct")),
+            "Skill Pass %":             _s(row.get("skill_pass_pct")),
         })
 
     cm_df = pd.DataFrame(display_rows)
-    _cm_pct_cols = ["Lecture %", "Practice %", "Exam %", "Completion %", "Quiz Pass %", "Skill Pass %"]
+    _cm_pct_cols = ["Lecture Delivery %", "Practice Delivery %", "Module Quiz Conduction %",
+                    "Student Completion %", "Quiz Pass %", "Skill Pass %"]
     _cm_styled = _apply_pct_colors(cm_df, _cm_pct_cols)
 
     cm_key = f"course_matrix_table_{st.session_state.get('cm_table_nonce', 0)}"
@@ -3588,18 +3589,18 @@ def render_course_matrix(course_rows: list[dict], selected_course: str | None) -
         on_select="rerun",
         selection_mode="single-row",
         column_config={
-            "#":            st.column_config.NumberColumn("#", format="%d", width=40),
-            "Course":       st.column_config.TextColumn("Course", width="large"),
-            "Lec Slots":    st.column_config.NumberColumn("Lec", format="%.0f", width=60),
-            "Prac Slots":   st.column_config.NumberColumn("Prac", format="%.0f", width=60),
-            "Exam Slots":   st.column_config.NumberColumn("Exam", format="%.0f", width=60),
-            "Total":        st.column_config.NumberColumn("Total", format="%.0f", width=60),
-            "Lecture %":    st.column_config.NumberColumn("Lec %", format="%.1f%%", width=80),
-            "Practice %":   st.column_config.NumberColumn("Prac %", format="%.1f%%", width=80),
-            "Exam %":       st.column_config.NumberColumn("Exam %", format="%.1f%%", width=80),
-            "Completion %": st.column_config.NumberColumn("Completion %", format="%.1f%%", width=100),
-            "Quiz Pass %":  st.column_config.NumberColumn("Quiz Pass %", format="%.1f%%", width=95),
-            "Skill Pass %": st.column_config.NumberColumn("Skill Pass %", format="%.1f%%", width=95),
+            "#":                        st.column_config.NumberColumn("#", format="%d", width=40),
+            "Course":                   st.column_config.TextColumn("Course", width="large"),
+            "Planned Lecture":          st.column_config.NumberColumn("Planned Lecture", format="%.0f", width=100),
+            "Planned Practice":         st.column_config.NumberColumn("Planned Practice", format="%.0f", width=100),
+            "Planned Module Quiz":      st.column_config.NumberColumn("Planned Module Quiz", format="%.0f", width=110),
+            "Total":                    st.column_config.NumberColumn("Total", format="%.0f", width=60),
+            "Lecture Delivery %":       st.column_config.NumberColumn("Lecture Delivery %", format="%.1f%%", width=110),
+            "Practice Delivery %":      st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%", width=115),
+            "Module Quiz Conduction %": st.column_config.NumberColumn("Module Quiz Conduction %", format="%.1f%%", width=130),
+            "Student Completion %":     st.column_config.NumberColumn("Student Completion %", format="%.1f%%", width=120),
+            "Quiz Pass %":              st.column_config.NumberColumn("Quiz Pass %", format="%.1f%%", width=95),
+            "Skill Pass %":             st.column_config.NumberColumn("Skill Pass %", format="%.1f%%", width=95),
         },
     )
     st.markdown("</div>", unsafe_allow_html=True)
