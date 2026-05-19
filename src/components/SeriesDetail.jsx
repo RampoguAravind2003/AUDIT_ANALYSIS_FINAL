@@ -107,18 +107,18 @@ export default function SeriesDetail({ seriesName, seriesData, onBack, onSelectU
             {/* Assessment */}
             <div className={`col-span-12 md:col-span-3 rounded-xl p-5 ${cardBg}`}>
               <h3 className={`text-sm font-semibold mb-4 ${headingColor}`}>Assessment Metrics</h3>
-              {data.avgAssessmentScore !== null ? (
+              {data.avgSkillPassRate != null || data.avgGradedPassRate != null ? (
                 <div className="space-y-3">
                   <div className="panel-muted rounded-lg p-4 text-center">
-                    <p className={`text-xs font-medium mb-1 ${subColor}`}>Avg Score</p>
+                    <p className={`text-xs font-medium mb-1 ${subColor}`}>Skill Pass</p>
                     <p className={`text-3xl font-bold ${headingColor}`}>
-                      {(data.avgAssessmentScore * 100).toFixed(1)}%
+                      {data.avgSkillPassRate != null ? `${(data.avgSkillPassRate * 100).toFixed(1)}%` : '—'}
                     </p>
                   </div>
                   <div className="panel-muted rounded-lg p-4 text-center">
-                    <p className={`text-xs font-medium mb-1 ${subColor}`}>Avg Participation</p>
+                    <p className={`text-xs font-medium mb-1 ${subColor}`}>Graded Pass</p>
                     <p className={`text-3xl font-bold ${headingColor}`}>
-                      {data.avgParticipation.toFixed(0)}
+                      {data.avgGradedPassRate != null ? `${(data.avgGradedPassRate * 100).toFixed(1)}%` : '—'}
                     </p>
                   </div>
                 </div>
@@ -160,7 +160,8 @@ export default function SeriesDetail({ seriesName, seriesData, onBack, onSelectU
                     <th className="text-center px-2 py-3 font-medium">Practice %</th>
                     <th className="text-center px-2 py-3 font-medium">Exam %</th>
                     <th className="text-center px-2 py-3 font-medium">Overall %</th>
-                    <th className={`text-center px-2 py-3 font-medium ${isDark ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>Score %</th>
+                    <th className={`text-center px-2 py-3 font-medium ${isDark ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>Skill Pass %</th>
+                    <th className={`text-center px-2 py-3 font-medium ${isDark ? 'bg-fuchsia-900/30 text-fuchsia-400' : 'bg-fuchsia-50 text-fuchsia-600'}`}>Graded Pass %</th>
                     <th className={`text-center px-2 py-3 font-medium ${isDark ? 'bg-indigo-900/30 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>Participation #</th>
                     <th className="text-center px-2 py-3 font-medium">Action</th>
                   </tr>
@@ -183,7 +184,10 @@ export default function SeriesDetail({ seriesName, seriesData, onBack, onSelectU
                         <td className="px-2 py-3 text-center text-sm text-amber-500">{u.avgExamCompletion.toFixed(1)}%</td>
                         <td className={`px-2 py-3 text-center text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-gray-800'}`}>{u.avgOverallCompletion.toFixed(1)}%</td>
                         <td className={`px-2 py-3 text-center text-sm font-semibold ${isDark ? 'text-purple-300 bg-purple-900/20' : 'text-purple-700 bg-purple-50/50'}`}>
-                          {u.avgAssessmentScore !== null ? `${(u.avgAssessmentScore * 100).toFixed(1)}%` : '—'}
+                          {u.avgSkillPassRate != null ? `${(u.avgSkillPassRate * 100).toFixed(1)}%` : '—'}
+                        </td>
+                        <td className={`px-2 py-3 text-center text-sm font-semibold ${isDark ? 'text-fuchsia-300 bg-fuchsia-900/20' : 'text-fuchsia-700 bg-fuchsia-50/50'}`}>
+                          {u.avgGradedPassRate != null ? `${(u.avgGradedPassRate * 100).toFixed(1)}%` : '—'}
                         </td>
                         <td className={`px-2 py-3 text-center text-sm font-semibold ${isDark ? 'text-indigo-300 bg-indigo-900/20' : 'text-indigo-700 bg-indigo-50/50'}`}>
                           {u.avgParticipation !== null ? `${u.avgParticipation.toFixed(0)}` : '—'}

@@ -246,11 +246,13 @@ export function groupAssessmentBySubject(courseScores, semester = 'Semester 2') 
     }
 
     if (!subjectScores[subjectName]) {
-      subjectScores[subjectName] = { scores: [], parts: [] };
+      subjectScores[subjectName] = { scores: [], parts: [], skillPass: [], gradedPass: [] };
     }
 
-    subjectScores[subjectName].scores.push(...data.scores);
-    subjectScores[subjectName].parts.push(...data.parts);
+    subjectScores[subjectName].scores.push(...(data.scores || []));
+    subjectScores[subjectName].parts.push(...(data.parts || []));
+    subjectScores[subjectName].skillPass.push(...(data.skillPass || []));
+    subjectScores[subjectName].gradedPass.push(...(data.gradedPass || []));
   }
 
   return subjectScores;

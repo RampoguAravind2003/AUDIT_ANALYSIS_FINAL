@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import AnimatedView from './ui/AnimatedView';
 import ScrollToTop from './ui/ScrollToTop';
@@ -8,12 +8,23 @@ import {
   getSemesterDatesForInstitute,
   normalizeCourseName,
   r2,
-  getSubjectFromCourse,
   groupCoursesBySubject,
   sortSubjectsByOrder,
   groupAssessmentBySubject,
 } from '../utils/semesterHelpers';
 import { addRipple } from '../utils/ripple';
+
+const avg = (values) => {
+  const nums = values.filter(v => Number.isFinite(v));
+  return nums.length ? nums.reduce((sum, value) => sum + value, 0) / nums.length : null;
+};
+
+const isSkillAssessment = (row) => String(row.assessment_type || '').toLowerCase().includes('skill');
+const isGradedAssessment = (row) => String(row.assessment_type || '').toLowerCase().includes('graded');
+const passMetric = (row) => {
+  const value = row.pass_rate ?? row.avg_score;
+  return Number.isFinite(value) ? value : null;
+};
 
 export default function UniversityDetail({ data, assessmentData, selectedInstitute, onBack, onReset, semester }) {
   const { isDark } = useTheme();
@@ -31,22 +42,21 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
     [data, selectedInstitute]
   );
 
-  useEffect(() => {
-    if (sections.length) setSelectedSection(sections[0]);
-    else setSelectedSection('');
-  }, [sections]);
+  const activeSection = sections.includes(selectedSection) ? selectedSection : '';
 
   const assessmentMetrics = useMemo(() => {
     if (!assessmentData) return null;
     let filtered = assessmentData.filter(d => d.university === selectedInstitute);
-    if (selectedSection) filtered = filtered.filter(d => d.section === selectedSection);
+    if (activeSection) filtered = filtered.filter(d => d.section === activeSection);
     if (!filtered.length) return null;
     const courseScores = {};
     filtered.forEach(d => {
       const name = normalizeCourseName(d.course_code, semester);
-      if (!courseScores[name]) courseScores[name] = { scores: [], parts: [] };
+      if (!courseScores[name]) courseScores[name] = { scores: [], parts: [], skillPass: [], gradedPass: [] };
       courseScores[name].scores.push(d.avg_score);
       courseScores[name].parts.push(d.avg_participation);
+      if (isSkillAssessment(d)) courseScores[name].skillPass.push(passMetric(d));
+      if (isGradedAssessment(d)) courseScores[name].gradedPass.push(passMetric(d));
     });
 
     // Group by subject if in subject view mode (Semester 2 only)
@@ -56,19 +66,23 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
 
     const courses = Object.keys(groupedScores).map(c => ({
       name: c,
-      avgScore: groupedScores[c].scores.reduce((a, b) => a + b, 0) / groupedScores[c].scores.length,
-      avgParticipation: groupedScores[c].parts.reduce((a, b) => a + b, 0) / groupedScores[c].parts.length,
+      avgScore: avg(groupedScores[c].scores),
+      avgParticipation: avg(groupedScores[c].parts),
+      skillPassRate: avg(groupedScores[c].skillPass || []),
+      gradedPassRate: avg(groupedScores[c].gradedPass || []),
     }));
     return {
       courses,
-      overallScore: courses.reduce((s, c) => s + c.avgScore, 0) / courses.length,
-      overallParticipation: courses.reduce((s, c) => s + c.avgParticipation, 0) / courses.length,
+      overallScore: avg(courses.map(c => c.avgScore)),
+      overallParticipation: avg(courses.map(c => c.avgParticipation)),
+      overallSkillPassRate: avg(courses.map(c => c.skillPassRate)),
+      overallGradedPassRate: avg(courses.map(c => c.gradedPassRate)),
     };
-  }, [assessmentData, selectedInstitute, selectedSection, semester, viewMode]);
+  }, [assessmentData, selectedInstitute, activeSection, semester, viewMode]);
 
   const metrics = useMemo(() => {
     let filtered = data.filter(d => d.institute === selectedInstitute);
-    if (selectedSection) filtered = filtered.filter(d => d.section === selectedSection);
+    if (activeSection) filtered = filtered.filter(d => d.section === activeSection);
     if (!filtered.length) return null;
     const courseGroups = filtered.reduce((acc, row) => {
       const courseName = normalizeCourseName(row.course, semester);
@@ -91,7 +105,7 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
     const exam = filtered.filter(d => d.session_type === 'EXAM');
     const sum = (a, k) => a.reduce((s, d) => s + (d[k] || 0), 0);
     const avg = (a, k) => a.length ? sum(a, k) / a.length : 0;
-    const rosterSize = selectedSection
+    const rosterSize = activeSection
       ? Math.max(...filtered.map(d => d.students || 0), 0)
       : [...filtered.reduce((sectionMap, row) => {
         const section = String(row.section || '').trim();
@@ -119,7 +133,7 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
       practiceP80Time: sum(prac, 'p80_time'),
       filtered,
     };
-  }, [data, selectedInstitute, selectedSection, semester, viewMode]);
+  }, [data, selectedInstitute, activeSection, semester, viewMode]);
 
   if (!metrics) {
     return (
@@ -194,20 +208,26 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
           </div>
         </div>
       </div>
-      {assessmentMetrics && (
-        <div className={`mt-5 pt-5 border-t ${borderColor}`}>
-          <h4 className={`text-xs font-semibold uppercase mb-3 ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>Assessment Summary</h4>
-          <div className="space-y-3">
-            <div className={`rounded-lg p-3 border ${isDark ? 'bg-purple-900/30 border-purple-700/50' : 'bg-purple-50 border-purple-100'}`}>
-              <p className={`text-xs mb-1 ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>Avg Score</p>
+              {assessmentMetrics && (
+                <div className={`mt-5 pt-5 border-t ${borderColor}`}>
+                  <h4 className={`text-xs font-semibold uppercase mb-3 ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>Assessment Summary</h4>
+                  <div className="space-y-3">
+                    <div className={`rounded-lg p-3 border ${isDark ? 'bg-purple-900/30 border-purple-700/50' : 'bg-purple-50 border-purple-100'}`}>
+              <p className={`text-xs mb-1 ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>Skill Pass</p>
               <p className={`text-xl font-bold ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>
-                {(assessmentMetrics.overallScore * 100).toFixed(1)}%
+                {assessmentMetrics.overallSkillPassRate != null ? `${(assessmentMetrics.overallSkillPassRate * 100).toFixed(1)}%` : '—'}
+              </p>
+            </div>
+            <div className={`rounded-lg p-3 border ${isDark ? 'bg-fuchsia-900/30 border-fuchsia-700/50' : 'bg-fuchsia-50 border-fuchsia-100'}`}>
+              <p className={`text-xs mb-1 ${isDark ? 'text-fuchsia-400' : 'text-fuchsia-600'}`}>Graded Pass</p>
+              <p className={`text-xl font-bold ${isDark ? 'text-fuchsia-300' : 'text-fuchsia-700'}`}>
+                {assessmentMetrics.overallGradedPassRate != null ? `${(assessmentMetrics.overallGradedPassRate * 100).toFixed(1)}%` : '—'}
               </p>
             </div>
             <div className={`rounded-lg p-3 border ${isDark ? 'bg-indigo-900/30 border-indigo-700/50' : 'bg-indigo-50 border-indigo-100'}`}>
               <p className={`text-xs mb-1 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>Avg Participation</p>
               <p className={`text-xl font-bold ${isDark ? 'text-indigo-300' : 'text-indigo-700'}`}>
-                {assessmentMetrics.overallParticipation.toFixed(0)}
+                {assessmentMetrics.overallParticipation !== null ? assessmentMetrics.overallParticipation.toFixed(0) : '—'}
               </p>
             </div>
           </div>
@@ -312,7 +332,7 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
                 <>
                   <span className={subColor}>—</span>
                   <select
-                    value={selectedSection}
+                    value={activeSection}
                     onChange={(e) => setSelectedSection(e.target.value)}
                     className={`${isDark ? 'styled-select-dark' : 'styled-select'} text-base font-semibold border rounded-lg px-2 py-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300 transition-colors min-h-[36px] ${
                       isDark
@@ -320,6 +340,7 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
                         : 'bg-transparent text-gray-800 border-gray-200'
                     }`}
                   >
+                    <option value="">All Sections</option>
                     {sections.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </>
@@ -468,8 +489,8 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
                     </h3>
                     <p className={`mt-0.5 text-xs ${muted}`}>
                       {viewMode === 'subject'
-                        ? 'Aggregated data by subject across all courses. Practice% and Exam% are completion rates. Score% is average assessment score.'
-                        : 'Practice% and Exam% are completion rates. Score% is average assessment score. Participation# is average learner count.'}
+                        ? 'Aggregated data by subject across all courses. Practice% and Exam% are completion rates. Skill Pass% and Graded Pass% are assessment pass rates.'
+                        : 'Practice% and Exam% are completion rates. Skill Pass% and Graded Pass% are assessment pass rates. Participation# is average learner count.'}
                     </p>
                   </div>
                   {/* View Mode Toggle - only show for Semester 2 */}
@@ -522,7 +543,8 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
                       <th className="text-center px-2 py-3 font-medium">Lecture %</th>
                       <th className="text-center px-2 py-3 font-medium">Practice %</th>
                       <th className="text-center px-2 py-3 font-medium">Exam %</th>
-                      <th className={`text-center px-2 py-3 font-medium ${isDark ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>Score %</th>
+                      <th className={`text-center px-2 py-3 font-medium ${isDark ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>Skill Pass %</th>
+                      <th className={`text-center px-2 py-3 font-medium ${isDark ? 'bg-fuchsia-900/30 text-fuchsia-400' : 'bg-fuchsia-50 text-fuchsia-600'}`}>Graded Pass %</th>
                       <th className={`text-center px-2 py-3 font-medium ${isDark ? 'bg-indigo-900/30 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>Participation #</th>
                       <th className="text-center px-2 py-3 font-medium">Avg Time</th>
                       <th className="text-center px-2 py-3 font-medium">P80 Time</th>
@@ -549,10 +571,13 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
                           <td className={`px-2 py-3 text-center text-sm ${isDark ? 'text-slate-300' : ''}`}>{row.p ? `${row.p.completion.toFixed(1)}%` : '—'}</td>
                           <td className={`px-2 py-3 text-center text-sm ${isDark ? 'text-slate-300' : ''}`}>{row.e ? `${row.e.completion.toFixed(1)}%` : '—'}</td>
                           <td className={`px-2 py-3 text-center text-sm font-semibold ${bodyText}`}>
-                            {row.ca ? `${(row.ca.avgScore * 100).toFixed(1)}%` : '—'}
+                            {row.ca?.skillPassRate !== null && row.ca?.skillPassRate !== undefined ? `${(row.ca.skillPassRate * 100).toFixed(1)}%` : '—'}
                           </td>
                           <td className={`px-2 py-3 text-center text-sm font-semibold ${bodyText}`}>
-                            {row.ca ? `${row.ca.avgParticipation.toFixed(0)}` : '—'}
+                            {row.ca?.gradedPassRate !== null && row.ca?.gradedPassRate !== undefined ? `${(row.ca.gradedPassRate * 100).toFixed(1)}%` : '—'}
+                          </td>
+                          <td className={`px-2 py-3 text-center text-sm font-semibold ${bodyText}`}>
+                            {row.ca?.avgParticipation !== null && row.ca?.avgParticipation !== undefined ? `${row.ca.avgParticipation.toFixed(0)}` : '—'}
                           </td>
                           <td className={`px-2 py-3 text-sm text-center ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>{row.avgT.toFixed(1)}h</td>
                           <td className={`px-2 py-3 text-sm text-center ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>{row.p80T.toFixed(1)}h</td>
@@ -561,7 +586,7 @@ export default function UniversityDetail({ data, assessmentData, selectedInstitu
                     })}
                     {courseRows.length === 0 && (
                       <tr>
-                        <td colSpan={12} className={`px-4 py-5 text-center text-sm ${muted}`}>
+                        <td colSpan={13} className={`px-4 py-5 text-center text-sm ${muted}`}>
                           No core courses found for this university and section.
                         </td>
                       </tr>

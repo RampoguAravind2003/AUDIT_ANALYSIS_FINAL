@@ -465,9 +465,11 @@ export async function fetchAssessmentData(filters = {}) {
         COALESCE(NULLIF(TRIM(u.section_name), ''), 'Unknown') AS section,
         COALESCE(content.course_title, ${getCourseExpression()}) AS course_code,
         'Assessment' AS assessment_type,
+        CAST(a.question_set_id AS STRING) AS assessment_id,
         a.user_id AS user_id,
         COALESCE(a.user_score, a.actual_score) AS user_score,
         a.actual_score AS actual_score,
+        NULL AS section_evaluation_result,
         ${legacyDateExpr} AS report_date
       FROM ${assessmentTable} a
       JOIN users u USING (user_id)
@@ -482,7 +484,7 @@ export async function fetchAssessmentData(filters = {}) {
         COALESCE(NULLIF(TRIM(t.section_name), ''), NULLIF(TRIM(u.section_name), ''), 'Unknown') AS section,
         COALESCE(
           content.course_title,
-          NULLIF(TRIM(REGEXP_EXTRACT(t.assessment_title, r'\|\|\s*(.+)$')), ''),
+          NULLIF(TRIM(REGEXP_EXTRACT(t.assessment_title, r'\\|\\|\\s*(.+)$')), ''),
           NULLIF(TRIM(t.section_tech_stack), ''),
           NULLIF(TRIM(t.assessment_title), ''),
           CONCAT('Assessment ', CAST(t.assessment_id AS STRING))
@@ -491,9 +493,11 @@ export async function fetchAssessmentData(filters = {}) {
           WHEN REGEXP_CONTAINS(LOWER(COALESCE(t.assessment_title, '')), r'graded assessment') THEN 'Graded Assessment'
           ELSE 'Skill Assessment'
         END AS assessment_type,
+        CAST(t.assessment_id AS STRING) AS assessment_id,
         t.user_id AS user_id,
         t.user_section_score AS user_score,
         t.section_actual_score AS actual_score,
+        t.section_evaluation_result AS section_evaluation_result,
         ${topicDateExpr} AS report_date
       FROM ${assessmentTopicTable} t
       LEFT JOIN users u USING (user_id)
@@ -520,6 +524,22 @@ export async function fetchAssessmentData(filters = {}) {
       assessment_type,
       COUNT(DISTINCT IF(COALESCE(user_score, actual_score) IS NOT NULL, user_id, NULL)) AS avg_participation,
       ROUND(AVG(COALESCE(SAFE_DIVIDE(user_score, NULLIF(actual_score, 0)), 0)), 4) AS avg_score,
+      ROUND(
+        SAFE_DIVIDE(
+          COUNT(DISTINCT IF(
+            assessment_type IN ('Skill Assessment', 'Graded Assessment')
+              AND REGEXP_CONTAINS(UPPER(COALESCE(section_evaluation_result, '')), r'PASS'),
+            CONCAT(CAST(user_id AS STRING), '||', CAST(assessment_id AS STRING)),
+            NULL
+          )),
+          COUNT(DISTINCT IF(
+            assessment_type IN ('Skill Assessment', 'Graded Assessment'),
+            CONCAT(CAST(user_id AS STRING), '||', CAST(assessment_id AS STRING)),
+            NULL
+          ))
+        ),
+        4
+      ) AS pass_rate,
       @selectedBatch AS batch,
       @selectedSemester AS semester,
       CAST(MAX(report_date) AS STRING) AS report_date

@@ -118,19 +118,19 @@ export default function SeriesOverview({ seriesData, onSelectSeries, analysisTyp
                       </div>
                     </div>
 
-                    {data.avgAssessmentScore !== null && (
+                    {(data.avgSkillPassRate != null || data.avgGradedPassRate != null) && (
                       <div className={`panel-muted rounded-lg p-3 mb-4`}>
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className={`text-xs font-medium ${muted}`}>Avg Score</p>
+                            <p className={`text-xs font-medium ${muted}`}>Skill Pass</p>
                             <p className={`text-2xl font-bold ${headingColor}`}>
-                              {(data.avgAssessmentScore * 100).toFixed(1)}%
+                              {data.avgSkillPassRate != null ? `${(data.avgSkillPassRate * 100).toFixed(1)}%` : '—'}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className={`text-xs font-medium ${muted}`}>Avg Participation</p>
+                            <p className={`text-xs font-medium ${muted}`}>Graded Pass</p>
                             <p className={`text-2xl font-bold ${headingColor}`}>
-                              {data.avgParticipation.toFixed(0)}
+                              {data.avgGradedPassRate != null ? `${(data.avgGradedPassRate * 100).toFixed(1)}%` : '—'}
                             </p>
                           </div>
                         </div>

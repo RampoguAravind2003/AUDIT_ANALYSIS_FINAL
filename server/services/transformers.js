@@ -31,6 +31,7 @@ export function transformAssessmentRow(row) {
     assessment_type:   String(row.assessment_type || row.assessmentType || 'Assessment'),
     avg_participation: parseFloat(row.avg_user || row.avg_participation || row.participation || row.users || 0),
     avg_score:         parseFloat(row.avg_score || row.score || 0),
+    pass_rate:         row.pass_rate === null || row.pass_rate === undefined ? null : parseFloat(row.pass_rate),
     batch:             String(row.batch || ''),
     semester:          String(row.semester || ''),
     report_date:       row.report_date ? formatDate(row.report_date) : '',

@@ -2598,9 +2598,6 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
     if section:
         q_where_base.append(f"LOWER(TRIM(COALESCE(q.section_name, ''))) = LOWER('{sql_escape(section)}')")
 
-    # Primary path: filter by derived_unit_type directly
-    q_where_primary = q_where_base + ["q.derived_unit_type IN ('MODULE_QUIZ', 'COURSE_QUIZ')"]
-
     _pass_expr = """(
                 UPPER(TRIM(CAST(q.best_attempt_evaluation_result AS STRING))) IN ('PASS', 'PASSED')
                 OR (
@@ -2610,7 +2607,7 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
                 )
               )"""
 
-    if qa_course_col:
+    if False:  # always use EXAM session IDs from schedule (not derived_unit_type)
         # â€â€ Primary: course column exists directly in quiz_attempts â€â€â€â€â€â€â€â€â€â€â€
         sql = f"""
             SELECT
@@ -2912,7 +2909,8 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
         sg_graded AS (
           SELECT
             sg.institute_name AS institute,
-            COUNT(DISTINCT sg.user_id) AS graded_students_attempted
+            COUNT(DISTINCT sg.user_id)                                                         AS graded_students_attempted,
+            COUNT(DISTINCT IF(sg.user_section_score_percentage >= 0.80, sg.user_id, NULL))     AS graded_students_passed
           FROM {skill_table} sg
           WHERE {base_where_sql}
             AND sg.assessment_type = 'GRADED_ASSESSMENT'
@@ -2936,7 +2934,11 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
                SAFE_DIVIDE(gr.graded_students_attempted, NULLIF(ir.total_students, 0)),
                NULL) * 100,
           1) AS academic_attempt_pct,
-          CAST(NULL AS FLOAT64) AS academic_pass_pct
+          ROUND(
+            IF(gr.graded_students_attempted > 0,
+               SAFE_DIVIDE(gr.graded_students_passed, NULLIF(gr.graded_students_attempted, 0)),
+               NULL) * 100,
+          1) AS academic_pass_pct
         FROM institute_roster ir
         LEFT JOIN sg_skill sk ON sk.institute = ir.institute
         LEFT JOIN sg_graded gr ON gr.institute = ir.institute
@@ -3819,6 +3821,9 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
         assessment_filtered = assessment_filtered[assessment_filtered["section"] == section]
     assessment_filtered["normalized_course"] = assessment_filtered["course_code"].apply(_normalize_course) if not assessment_filtered.empty else []
 
+    # Pre-compute roster size so per-course attendance % can be derived inside the loop
+    roster_size = get_roster_size_for_scope(filtered, section)
+
     for course_name in sorted(filtered["normalized_course"].unique().tolist()):
         course_df = filtered[filtered["normalized_course"] == course_name]
         lecture = summarize_type(course_df, "LECTURE")
@@ -3831,9 +3836,40 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
         overall_assessment_row = summarize_assessment_subset(assessment_row)
         skill_assessment_row = summarize_assessment_subset(assessment_row, "Skill Assessment")
         graded_assessment_row = summarize_assessment_subset(assessment_row, "Graded Assessment")
+
+        # Skill pass % — average of per-raw-course pass rates (not pooled counts).
+        # Fixes mismatch when multiple raw course codes roll up into the same subject label.
         skill_pass_pct = None
-        if skill_assessment_row["participation"] not in (None, 0) and skill_assessment_row["pass_count"] is not None:
-            skill_pass_pct = round((skill_assessment_row["pass_count"] / skill_assessment_row["participation"]) * 100, 1)
+        _skill_rows = assessment_row[assessment_row["assessment_type"] == "Skill Assessment"] if not assessment_row.empty else pd.DataFrame()
+        if not _skill_rows.empty and "avg_pass_count" in _skill_rows.columns and "avg_participation" in _skill_rows.columns:
+            _rates = []
+            for _, _r in _skill_rows.iterrows():
+                _part = pd.to_numeric(_r.get("avg_participation"), errors="coerce")
+                _pass = pd.to_numeric(_r.get("avg_pass_count"), errors="coerce")
+                if pd.notna(_part) and _part > 0 and pd.notna(_pass):
+                    _rates.append(float(_pass) / float(_part) * 100)
+            if _rates:
+                skill_pass_pct = round(sum(_rates) / len(_rates), 1)
+
+        # Academic (graded) pass % — same aggregation pattern as skill
+        academic_pass_pct = None
+        _graded_rows = assessment_row[assessment_row["assessment_type"] == "Graded Assessment"] if not assessment_row.empty else pd.DataFrame()
+        if not _graded_rows.empty and "avg_pass_count" in _graded_rows.columns and "avg_participation" in _graded_rows.columns:
+            _rates = []
+            for _, _r in _graded_rows.iterrows():
+                _part = pd.to_numeric(_r.get("avg_participation"), errors="coerce")
+                _pass = pd.to_numeric(_r.get("avg_pass_count"), errors="coerce")
+                if pd.notna(_part) and _part > 0 and pd.notna(_pass):
+                    _rates.append(float(_pass) / float(_part) * 100)
+            if _rates:
+                academic_pass_pct = round(sum(_rates) / len(_rates), 1)
+
+        # Attendance % = participation count / roster size
+        _skill_part = skill_assessment_row["participation"]
+        skill_attendance_pct = round(min(float(_skill_part) / roster_size * 100, 100.0), 1) if (roster_size > 0 and _skill_part is not None) else None
+        _graded_part = graded_assessment_row["participation"]
+        academic_attendance_pct = round(min(float(_graded_part) / roster_size * 100, 100.0), 1) if (roster_size > 0 and _graded_part is not None) else None
+
         # Extract sem_course_id for ID-based drill-down (present when semester_df comes from portal_courses)
         _sem_cid = ""
         if "sem_course_id" in course_df.columns:
@@ -3855,8 +3891,11 @@ def build_university_metrics(data_df: pd.DataFrame, assessment_df: pd.DataFrame,
                 "Participation #": round(overall_assessment_row["participation"], 1) if overall_assessment_row["participation"] is not None else None,
                 "Skill Pass %": skill_pass_pct,
                 "Skill Participation #": round(skill_assessment_row["participation"], 1) if skill_assessment_row["participation"] is not None else None,
+                "Skill Attendance %": skill_attendance_pct,
                 "Academic Assessment Score %": round(graded_assessment_row["score"] * 100, 1) if graded_assessment_row["score"] is not None else None,
                 "Academic Assessment Participation #": round(graded_assessment_row["participation"], 1) if graded_assessment_row["participation"] is not None else None,
+                "Academic Attendance %": academic_attendance_pct,
+                "Academic Pass %": academic_pass_pct,
                 "Classroom Quiz Pass %": round(quiz_pass_pct, 1) if quiz_pass_pct is not None else None,
             }
         )
@@ -3951,6 +3990,208 @@ def _bar_class(value, green_threshold=75, orange_threshold=50):
     if value >= orange_threshold:
         return "bar-orange"
     return "bar-red"
+
+
+def render_course_overview_table(course_rows: list[dict]) -> str | None:
+    """
+    Renders the 8-color-group course overview as a custom HTML table.
+    Returns the selected course name for drill-down (via selectbox), or None.
+    """
+    if not course_rows:
+        st.warning("No course data to display.")
+        return None
+
+    def _v(val, decimals=1, suffix="", empty="--"):
+        if val is None:
+            return empty
+        try:
+            f = float(val)
+            if f != f:
+                return empty
+            return f"{int(round(f))}{suffix}" if decimals == 0 else f"{f:.{decimals}f}{suffix}"
+        except (TypeError, ValueError):
+            return str(val) if val else empty
+
+    def _pct_color(val, green=75, orange=50):
+        if val is None:
+            return "#94A3B8"
+        try:
+            f = float(val)
+        except Exception:
+            return "#94A3B8"
+        if f >= green:
+            return "#16A34A"
+        if f >= orange:
+            return "#D97706"
+        return "#DC2626"
+
+    def _dev_color(val):
+        if val is None:
+            return "#94A3B8"
+        try:
+            f = float(val)
+        except Exception:
+            return "#94A3B8"
+        if f <= 10:
+            return "#16A34A"
+        if f <= 25:
+            return "#D97706"
+        return "#DC2626"
+
+    _TD = "padding:5px 10px;text-align:center;font-size:0.78rem;border-bottom:1px solid #F1F5F9;white-space:nowrap;"
+
+    def _cell(val, decimals=1, suffix="", color=None, bold=False):
+        txt = _v(val, decimals, suffix)
+        s = _TD
+        if color:
+            s += f"color:{color};"
+        if bold:
+            s += "font-weight:600;"
+        return f'<td style="{s}">{txt}</td>'
+
+    def _pct_cell(val, green=75, orange=50):
+        return _cell(val, 1, "%", color=_pct_color(val, green, orange), bold=True)
+
+    def _dev_cell(val):
+        return _cell(val, 1, "%", color=_dev_color(val), bold=True)
+
+    def _na_cell():
+        return f'<td style="{_TD}color:#CBD5E1;">--</td>'
+
+    # Color group palette
+    _G = {
+        1: ("#EEF2FF", "#C7D2FE", "#4338CA", "#6366F1"),
+        2: ("#F0FDF4", "#BBF7D0", "#15803D", "#16A34A"),
+        3: ("#F8FAFC", "#E2E8F0", "#94A3B8", "#CBD5E1"),
+        4: ("#FFF7ED", "#FED7AA", "#C2410C", "#D97706"),
+        5: ("#F0FDFA", "#99F6E4", "#0F766E", "#0D9488"),
+        6: ("#FAF5FF", "#E9D5FF", "#6D28D9", "#7C3AED"),
+        7: ("#FFFBEB", "#FDE68A", "#92400E", "#B45309"),
+        8: ("#FFF1F2", "#FECDD3", "#BE123C", "#E11D48"),
+    }
+
+    def _grp_th(label, colspan, g):
+        bg, border, text, _ = _G[g]
+        return (
+            f'<th colspan="{colspan}" style="background:{bg};color:{text};'
+            f'padding:7px 10px;text-align:center;font-weight:700;font-size:0.69rem;'
+            f'letter-spacing:0.06em;text-transform:uppercase;'
+            f'border-bottom:2px solid {border};white-space:nowrap;">{label}</th>'
+        )
+
+    def _col_th(label, g):
+        bg, _, _, sub = _G[g]
+        return (
+            f'<th style="background:{bg};color:{sub};padding:6px 8px;'
+            f'text-align:center;font-weight:600;font-size:0.69rem;'
+            f'border-bottom:2px solid #E2E8F0;white-space:nowrap;min-width:72px;">{label}</th>'
+        )
+
+    grp_row = (
+        _grp_th("Subject Info", 3, 1)
+        + _grp_th("Lectures", 4, 2)
+        + _grp_th("Classroom Quiz", 3, 3)
+        + _grp_th("Practice", 4, 4)
+        + _grp_th("Practice Completion", 1, 5)
+        + _grp_th("Module Quiz", 6, 6)
+        + _grp_th("Skill Assessment", 5, 7)
+        + _grp_th("Academic", 2, 8)
+    )
+
+    col_row = (
+        _col_th("Subject", 1) + _col_th("Mode", 1) + _col_th("Total Designed", 1)
+        + _col_th("Designed", 2) + _col_th("Till Date", 2) + _col_th("Scheduled", 2) + _col_th("Deviation %", 2)
+        + _col_th("Attend %", 3) + _col_th("Q Attempt", 3) + _col_th("Q Correct", 3)
+        + _col_th("Designed", 4) + _col_th("Till Date", 4) + _col_th("Scheduled", 4) + _col_th("Deviation %", 4)
+        + _col_th("Completion %", 5)
+        + _col_th("Designed", 6) + _col_th("Till Date", 6) + _col_th("Scheduled", 6)
+        + _col_th("Deviation %", 6) + _col_th("Attend %", 6) + _col_th("Pass %", 6)
+        + _col_th("Designed", 7) + _col_th("Till Date", 7) + _col_th("Scheduled", 7)
+        + _col_th("Attend %", 7) + _col_th("Pass %", 7)
+        + _col_th("Attend %", 8) + _col_th("Pass %", 8)
+    )
+
+    data_rows_html = []
+    for i, row in enumerate(course_rows):
+        bg = "#FAFBFF" if i % 2 == 0 else "#FFFFFF"
+        subj_s = (
+            f"padding:5px 12px;text-align:left;font-weight:600;font-size:0.78rem;"
+            f"border-bottom:1px solid #F1F5F9;white-space:nowrap;background:{bg};"
+            f"color:#1E293B;min-width:150px;"
+        )
+        plain_s = f"padding:5px 10px;text-align:center;font-size:0.78rem;border-bottom:1px solid #F1F5F9;white-space:nowrap;background:{bg};color:#334155;"
+
+        total = (row.get("lecture_slots") or 0) + (row.get("practice_slots") or 0) + (row.get("exam_slots") or 0)
+
+        tr = f'<tr style="background:{bg};">'
+        # Color 1
+        tr += f'<td style="{subj_s}">{html.escape(str(row.get("course", "")))}</td>'
+        tr += f'<td style="{plain_s}">{html.escape(str(row.get("delivery_mode") or "--"))}</td>'
+        tr += f'<td style="{plain_s}">{_v(total, 0)}</td>'
+        # Color 2 — Lectures
+        tr += f'<td style="{plain_s}">{_v(row.get("lecture_slots"), 0)}</td>'
+        tr += f'<td style="{plain_s}">{_v(row.get("lec_till_date"), 1)}</td>'
+        tr += f'<td style="{plain_s}">{_v(row.get("lec_scheduled"), 1)}</td>'
+        tr += _dev_cell(row.get("lec_deviation"))
+        # Color 3 — Classroom Quiz (all --)
+        tr += _na_cell(); tr += _na_cell(); tr += _na_cell()
+        # Color 4 — Practice
+        tr += f'<td style="{plain_s}">{_v(row.get("practice_slots"), 0)}</td>'
+        tr += f'<td style="{plain_s}">{_v(row.get("prac_till_date"), 1)}</td>'
+        tr += f'<td style="{plain_s}">{_v(row.get("prac_scheduled"), 1)}</td>'
+        tr += _dev_cell(row.get("prac_deviation"))
+        # Color 5 — Practice Completion
+        tr += _pct_cell(row.get("practice_completion_pct"))
+        # Color 6 — Module Quiz
+        tr += f'<td style="{plain_s}">{_v(row.get("exam_slots"), 0)}</td>'
+        tr += f'<td style="{plain_s}">{_v(row.get("mq_till_date"), 1)}</td>'
+        tr += f'<td style="{plain_s}">{_v(row.get("mq_scheduled"), 1)}</td>'
+        tr += _dev_cell(row.get("mq_deviation"))
+        tr += _na_cell()  # MQ Attend % — not yet available per course
+        tr += _pct_cell(row.get("module_quiz_pass_pct"))
+        # Color 7 — Skill Assessment
+        tr += f'<td style="{plain_s}">{_v(row.get("skill_designed"), 0)}</td>'
+        tr += f'<td style="{plain_s}">{_v(row.get("skill_till_date"), 1)}</td>'
+        tr += _na_cell()  # Skill Scheduled — subject mapping unclear
+        tr += _pct_cell(row.get("skill_attendance_pct"))
+        tr += _pct_cell(row.get("skill_pass_pct"))
+        # Color 8 — Academic
+        tr += _pct_cell(row.get("academic_attendance_pct"))
+        tr += _pct_cell(row.get("academic_pass_pct"))
+        tr += "</tr>"
+        data_rows_html.append(tr)
+
+    table_html = (
+        '<div style="overflow-x:auto;border:1px solid #E2E8F0;border-radius:12px;'
+        'box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:10px;">'
+        '<table style="border-collapse:collapse;white-space:nowrap;width:100%;'
+        'font-family:Inter,ui-sans-serif,sans-serif;">'
+        f"<thead><tr>{grp_row}</tr><tr>{col_row}</tr></thead>"
+        f"<tbody>{''.join(data_rows_html)}</tbody>"
+        "</table></div>"
+    )
+
+    st.markdown(
+        "<div style='display:flex;align-items:center;gap:10px;margin-bottom:6px'>"
+        "<div style='width:4px;height:1.1em;background:linear-gradient(180deg,#6366f1,#4f46e5);"
+        "border-radius:999px;flex-shrink:0'></div>"
+        "<div style='font-size:1rem;font-weight:700;color:#0F172A;letter-spacing:-0.01em'>Course Overview</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
+
+    course_names = [r["course"] for r in course_rows]
+    selected = st.selectbox(
+        "Select a course to open the detail view",
+        ["-- Select course --"] + course_names,
+        key="cm_course_select",
+    )
+    st.caption("Pick a course above to drill into schedule adherence, quizzes, and assessments.")
+
+    if selected and selected != "-- Select course --":
+        return selected
+    return None
 
 
 def render_course_matrix(course_rows: list[dict], selected_course: str | None) -> str | None:
@@ -6431,6 +6672,30 @@ def main():
             return None
 
         # â€â€ Build course_rows for the matrix â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
+        # Pacing ratio: elapsed working days / total semester working days
+        _pacing_ratio = 0.0
+        if dates and dates.get("start") and dates.get("end"):
+            _total_wd = count_weekdays_between(dates["start"], dates["end"])
+            if _total_wd:
+                _today_str = datetime.now().strftime("%Y-%m-%d")
+                _end_eff = dates["end"] if dates["end"] <= _today_str else _today_str
+                _elapsed_wd = count_weekdays_between(dates["start"], _end_eff) or 0
+                _pacing_ratio = min(1.0, float(_elapsed_wd) / float(_total_wd))
+
+        _delivery_mode = get_semester_config_value(selected_university, semester, DELIVERY_MODE_BY_SEMESTER) or "--"
+
+        def _safe_f(v):
+            try:
+                f = float(v)
+                return 0.0 if f != f else f
+            except (TypeError, ValueError):
+                return 0.0
+
+        def _deviation(till_date, scheduled):
+            if till_date and till_date > 0:
+                return round(((till_date - scheduled) / till_date) * 100, 1)
+            return None
+
         course_rows = []
         for _, ct_row in course_table.iterrows():
             cname = ct_row["Course"]
@@ -6447,23 +6712,49 @@ def main():
             lecture_slots = dr.get("lecture_slots") if dr and dr.get("lecture_slots") is not None else ct_row.get("Lecture Slots")
             practice_slots = dr.get("practice_slots") if dr and dr.get("practice_slots") is not None else ct_row.get("Practice Slots")
             exam_slots = dr.get("exam_slots") if dr and dr.get("exam_slots") is not None else ct_row.get("Exam Slots")
+
+            _lec  = _safe_f(lecture_slots)
+            _prac = _safe_f(practice_slots)
+            _exam = _safe_f(exam_slots)
+            lec_till  = round(_lec  * _pacing_ratio, 1)
+            prac_till = round(_prac * _pacing_ratio, 1)
+            mq_till   = round(_exam * _pacing_ratio, 1)
+            lec_sched  = round(_lec  * (_safe_f(lecture_pct)  / 100), 1)
+            prac_sched = round(_prac * (_safe_f(practice_pct) / 100), 1)
+            mq_sched   = round(_exam * (_safe_f(exam_pct)     / 100), 1)
+
             course_rows.append({
                 "course":         cname,
                 "sem_course_id":  cid,
+                "delivery_mode":  _delivery_mode,
                 "delivered":      delivered,
                 "planned":        planned,
                 "lecture_slots":  lecture_slots,
                 "practice_slots": practice_slots,
                 "exam_slots":     exam_slots,
-                "total_slots":    (lecture_slots or 0) + (practice_slots or 0) + (exam_slots or 0),
+                "total_slots":    (_lec + _prac + _exam),
                 "lecture_pct":    lecture_pct,
                 "practice_pct":   practice_pct,
-                "exam_pct":                  exam_pct,
-                "completion_pct":            completion,
-                "practice_completion_pct":   _course_practice_completion(cname),
-                "quiz_pass_pct":             _course_quiz_pass(cname),
-                "module_quiz_pass_pct":      _course_module_quiz_pass(cname),
-                "skill_pass_pct":            ct_row.get("Skill Pass %"),
+                "exam_pct":       exam_pct,
+                "lec_till_date":  lec_till,
+                "lec_scheduled":  lec_sched,
+                "lec_deviation":  _deviation(lec_till, lec_sched),
+                "prac_till_date": prac_till,
+                "prac_scheduled": prac_sched,
+                "prac_deviation": _deviation(prac_till, prac_sched),
+                "mq_till_date":   mq_till,
+                "mq_scheduled":   mq_sched,
+                "mq_deviation":   _deviation(mq_till, mq_sched),
+                "skill_designed":       5,
+                "skill_till_date":      round(5 * _pacing_ratio, 1),
+                "skill_attendance_pct": ct_row.get("Skill Attendance %"),
+                "skill_pass_pct":       ct_row.get("Skill Pass %"),
+                "academic_attendance_pct": ct_row.get("Academic Attendance %"),
+                "academic_pass_pct":       ct_row.get("Academic Pass %"),
+                "completion_pct":          completion,
+                "practice_completion_pct": _course_practice_completion(cname),
+                "quiz_pass_pct":           _course_quiz_pass(cname),
+                "module_quiz_pass_pct":    _course_module_quiz_pass(cname),
             })
 
         # â€â€ Course Matrix or Course Detail â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
@@ -6513,10 +6804,9 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-            clicked = render_course_matrix(course_rows, selected_course_for_detail)
+            clicked = render_course_overview_table(course_rows)
             if clicked:
                 st.session_state["selected_course_for_detail"] = clicked
-                # Store sem_course_id for the clicked course to enable ID-based drill-down
                 _clicked_id = next(
                     (r.get("sem_course_id", "") for r in course_rows if r.get("course") == clicked),
                     ""

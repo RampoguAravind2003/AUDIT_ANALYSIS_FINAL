@@ -15,6 +15,9 @@ export const parseAssessmentCSV = (text) => {
       section: findCol('section_name', 'section'),
       courseCode: findCol('section_tech_stack', 'section_tech', 'tech_stack', 'course_code'),
       score: findCol('user_section_score'),
+      result: findCol('section_evaluation_result', 'evaluation_result', 'result'),
+      assessmentId: findCol('assessment_id'),
+      assessmentType: findCol('assessment_type'),
       batch: findCol('batch'),
       semester: findCol('semester'),
       reportDate: findCol('report_date', 'date'),
@@ -34,6 +37,9 @@ export const parseAssessmentCSV = (text) => {
       const courseCode = get(cols.courseCode);
       const userId = get(cols.userId);
       const score = getNum(cols.score);
+      const result = get(cols.result);
+      const assessmentId = get(cols.assessmentId) || courseCode;
+      const assessmentType = get(cols.assessmentType);
       const batch = get(cols.batch);
       const semester = get(cols.semester);
       const reportDate = get(cols.reportDate);
@@ -45,11 +51,15 @@ export const parseAssessmentCSV = (text) => {
         groupMap[key] = {
           university, section, course_code: courseCode,
           scores: [], userIds: new Set(),
+          attempts: new Set(), passed: new Set(), assessmentType,
           batch, semester, report_date: reportDate,
         };
       }
       groupMap[key].scores.push(score);
       groupMap[key].userIds.add(userId);
+      const attemptKey = `${userId}|||${assessmentId}`;
+      groupMap[key].attempts.add(attemptKey);
+      if (String(result).toUpperCase().includes('PASS')) groupMap[key].passed.add(attemptKey);
     }
 
     // Convert groups to aggregated rows
@@ -57,8 +67,10 @@ export const parseAssessmentCSV = (text) => {
       university: g.university,
       section: g.section,
       course_code: g.course_code,
+      assessment_type: g.assessmentType || 'Assessment',
       // average score normalised to 0-1
       avg_score: g.scores.length ? (g.scores.reduce((s, v) => s + v, 0) / g.scores.length) / 100 : 0,
+      pass_rate: g.attempts.size ? g.passed.size / g.attempts.size : null,
       // distinct user count as participation
       avg_participation: g.userIds.size,
       batch: g.batch,
@@ -71,6 +83,7 @@ export const parseAssessmentCSV = (text) => {
   const cols = {
     university: findCol('university', 'institute'), section: findCol('section'), courseCode: findCol('section_tech', 'tech_stack', 'course_code'),
     participation: findCol('avg_user', 'participation', 'users'), score: findCol('avg_score', 'score'),
+    passRate: findCol('pass_rate', 'pass %', 'pass_percentage'), assessmentType: findCol('assessment_type'),
     batch: findCol('batch'), semester: findCol('semester'), reportDate: findCol('report_date', 'date'),
   };
   const result = [];
@@ -82,7 +95,7 @@ export const parseAssessmentCSV = (text) => {
     const getNum = (idx) => parseFloat(get(idx)) || 0;
     const university = get(cols.university), section = get(cols.section), courseCode = get(cols.courseCode);
     if (!university || !courseCode) continue;
-    result.push({ university, section, course_code: courseCode, avg_participation: getNum(cols.participation), avg_score: getNum(cols.score), batch: get(cols.batch), semester: get(cols.semester), report_date: get(cols.reportDate) });
+    result.push({ university, section, course_code: courseCode, assessment_type: get(cols.assessmentType) || 'Assessment', avg_participation: getNum(cols.participation), avg_score: getNum(cols.score), pass_rate: cols.passRate >= 0 ? getNum(cols.passRate) : null, batch: get(cols.batch), semester: get(cols.semester), report_date: get(cols.reportDate) });
   }
   return result;
 };
