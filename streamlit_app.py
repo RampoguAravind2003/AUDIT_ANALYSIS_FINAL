@@ -2535,11 +2535,8 @@ def fetch_course_delivery_stats(batch: str, semester: str, institute: str, secti
             COUNT(DISTINCT IF(COALESCE(delivered, 0) > 0, session_name_enum, NULL)) AS total_delivered,
             COUNT(DISTINCT IF(session_type = 'LECTURE',  session_name_enum, NULL)) AS lecture_slots,
             COUNT(DISTINCT IF(session_type = 'PRACTICE', session_name_enum, NULL)) AS practice_slots,
-            -- Module Quiz only: EXAM sessions whose name starts with 'quiz' or contains 'module'
-            COUNT(DISTINCT IF(session_type = 'EXAM'
-              AND (LOWER(COALESCE(session_name_enum, '')) LIKE 'quiz%'
-                   OR LOWER(COALESCE(session_name_enum, '')) LIKE '%module%'),
-              session_name_enum, NULL)) AS exam_slots
+            -- All EXAM sessions = module quizzes (consistent with institute level)
+            COUNT(DISTINCT IF(session_type = 'EXAM', session_name_enum, NULL)) AS exam_slots
           FROM joined
           GROUP BY course, sem_course_id, section
         )
@@ -3041,15 +3038,14 @@ def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, sec
     )
     if not course_col:
         return pd.DataFrame(columns=["course_title", "exam_conducted", "exam_planned", "exam_conduction_pct"])
-    name_col = first_existing_column(sched_cols, ["session_name_enum", "session_name"])
 
+    # All EXAM session_ids for a course = module quizzes. No name filter applied —
+    # consistent with institute-level which counts all EXAM sessions.
     where_clauses = [
         f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
         f"UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'",
         f"TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''",
     ]
-    if name_col:
-        where_clauses.append(module_quiz_name_filter_sql(f"s.{name_col}"))
     window_clause = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
     if window_clause:
         where_clauses.append(window_clause)
