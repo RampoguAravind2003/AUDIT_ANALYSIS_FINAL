@@ -2587,95 +2587,6 @@ def fetch_course_delivery_stats(batch: str, semester: str, institute: str, secti
     if designed_df.empty:
         return _empty
 
-    # ── Part 2: Scheduled counts from schedule table ──────────────────────────
-    # Detect course-title column in schedule table dynamically
-    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
-    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
-    course_col = first_existing_column(
-        sched_cols,
-        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
-    )
-
-    if course_col:
-        schedule_where = [
-            f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
-            "UPPER(CAST(s.session_type AS STRING)) IN ('LECTURE', 'PRACTICE', 'EXAM')",
-        ]
-        sched_window = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
-        if sched_window:
-            schedule_where.append(sched_window)
-        if batch and batch.strip():
-            schedule_where.append(batch_sql_filter(batch, "s.batch_name"))
-        if section:
-            schedule_where.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
-
-        sched_sql = f"""
-            WITH portal AS (
-              SELECT DISTINCT
-                REPLACE(p.sem_course_id, '-', '')   AS sem_course_id,
-                LOWER(TRIM(p.sem_course_title))     AS course_key
-              FROM {refs["portal_courses"]} p
-              WHERE {' AND '.join(portal_where)}
-            ),
-            schedule_raw AS (
-              SELECT
-                LOWER(TRIM(COALESCE(CAST(s.{course_col} AS STRING), ''))) AS course_key,
-                COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')      AS section,
-                UPPER(CAST(s.session_type AS STRING))                      AS session_type,
-                s.session_id,
-                UPPER(COALESCE(s.session_status, ''))                      AS session_status
-              FROM {refs["schedule"]} s
-              WHERE {' AND '.join(schedule_where)}
-            ),
-            per_section AS (
-              SELECT
-                p.sem_course_id,
-                sr.section,
-                -- Lecture
-                COUNT(DISTINCT IF(sr.session_type = 'LECTURE'
-                  AND sr.session_status IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
-                  sr.session_id, NULL))                                        AS lec_scheduled,
-                -- Practice
-                COUNT(DISTINCT IF(sr.session_type = 'PRACTICE'
-                  AND sr.session_status IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
-                  sr.session_id, NULL))                                        AS prac_scheduled,
-                -- Exam / Module Quiz
-                COUNT(DISTINCT IF(sr.session_type = 'EXAM'
-                  AND sr.session_status IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
-                  sr.session_id, NULL))                                        AS exam_scheduled
-              FROM portal p
-              JOIN schedule_raw sr ON sr.course_key = p.course_key
-              GROUP BY p.sem_course_id, sr.section
-            )
-            SELECT
-              sem_course_id,
-              ROUND(AVG(lec_scheduled),  1) AS lec_scheduled,
-              ROUND(AVG(prac_scheduled), 1) AS prac_scheduled,
-              ROUND(AVG(exam_scheduled), 1) AS mq_scheduled
-            FROM per_section
-            GROUP BY sem_course_id
-        """
-        try:
-            sched_df = run_query(sched_sql)
-            if not sched_df.empty and "sem_course_id" in sched_df.columns:
-                designed_df = designed_df.merge(
-                    sched_df[["sem_course_id", "lec_scheduled", "prac_scheduled", "mq_scheduled"]],
-                    on="sem_course_id",
-                    how="left",
-                )
-            else:
-                designed_df["lec_scheduled"]  = None
-                designed_df["prac_scheduled"] = None
-                designed_df["mq_scheduled"]   = None
-        except Exception:
-            designed_df["lec_scheduled"]  = None
-            designed_df["prac_scheduled"] = None
-            designed_df["mq_scheduled"]   = None
-    else:
-        designed_df["lec_scheduled"]  = None
-        designed_df["prac_scheduled"] = None
-        designed_df["mq_scheduled"]   = None
-
     return designed_df
 
 
@@ -2967,7 +2878,7 @@ def fetch_course_session_units_schedule(
             COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')           AS section,
             COUNT(DISTINCT s.session_id)                                    AS total_sessions,
             COUNT(DISTINCT IF(
-              UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+              UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
               s.session_id, NULL
             ))                                                               AS delivered_sessions
           FROM {refs["schedule"]} s
@@ -3177,12 +3088,12 @@ def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, sec
         SELECT
           TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
           COUNT(DISTINCT IF(
-            UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+            UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
             s.session_id, NULL)) AS exam_conducted,
           COUNT(DISTINCT s.session_id) AS exam_planned,
           ROUND(SAFE_DIVIDE(
             COUNT(DISTINCT IF(
-              UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+              UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
               s.session_id, NULL)),
             NULLIF(COUNT(DISTINCT s.session_id), 0)
           ) * 100, 1) AS exam_conduction_pct
@@ -3195,6 +3106,81 @@ def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, sec
         return run_query(sql)
     except Exception:
         return pd.DataFrame(columns=["course_title", "exam_conducted", "exam_planned", "exam_conduction_pct"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_course_scheduled_counts(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
+    """
+    Returns per-course scheduled session counts directly from the schedule table.
+
+    Scheduled = COUNT(DISTINCT session_id WHERE session_status IN
+                      'COMPLETED' / 'DELIVERED' / 'CONDUCTED')
+    averaged across sections.
+
+    Columns: course_title, lec_scheduled, prac_scheduled, mq_scheduled
+
+    Note: course_title is the raw string from the schedule table's course column.
+    Callers must use normalize_text() matching to align these titles with portal_courses names.
+    """
+    refs = get_table_refs()
+    _empty = pd.DataFrame(columns=["course_title", "lec_scheduled", "prac_scheduled", "mq_scheduled"])
+
+    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
+    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
+    course_col = first_existing_column(
+        sched_cols,
+        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
+    )
+    if not course_col:
+        return _empty
+
+    where_clauses = [
+        f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "UPPER(CAST(s.session_type AS STRING)) IN ('LECTURE', 'PRACTICE', 'EXAM')",
+        f"TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''",
+    ]
+    window_clause = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
+    if window_clause:
+        where_clauses.append(window_clause)
+    if batch and batch.strip():
+        where_clauses.append(batch_sql_filter(batch, "s.batch_name"))
+    if section:
+        where_clauses.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    sql = f"""
+        WITH per_section AS (
+          SELECT
+            TRIM(CAST(s.{course_col} AS STRING))                   AS course_title,
+            COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')  AS section,
+            COUNT(DISTINCT IF(
+              UPPER(CAST(s.session_type AS STRING)) = 'LECTURE'
+              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+              s.session_id, NULL))                                  AS lec_scheduled,
+            COUNT(DISTINCT IF(
+              UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE'
+              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+              s.session_id, NULL))                                  AS prac_scheduled,
+            COUNT(DISTINCT IF(
+              UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
+              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+              s.session_id, NULL))                                  AS mq_scheduled
+          FROM {refs["schedule"]} s
+          WHERE {' AND '.join(where_clauses)}
+          GROUP BY course_title, section
+        )
+        SELECT
+          course_title,
+          ROUND(AVG(lec_scheduled),  1) AS lec_scheduled,
+          ROUND(AVG(prac_scheduled), 1) AS prac_scheduled,
+          ROUND(AVG(mq_scheduled),   1) AS mq_scheduled
+        FROM per_section
+        GROUP BY course_title
+        ORDER BY course_title
+    """
+    try:
+        return run_query(sql)
+    except Exception:
+        return _empty
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -3313,17 +3299,17 @@ def fetch_session_delivery_metrics(batch: str, semester: str) -> pd.DataFrame:
           SELECT
             s.institute_name AS institute,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'LECTURE'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'), s.session_id, NULL)) AS lecture_delivered,
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'), s.session_id, NULL)) AS lecture_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'LECTURE', s.session_id, NULL)) AS lecture_planned,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'), s.session_id, NULL)) AS practice_delivered,
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'), s.session_id, NULL)) AS practice_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE', s.session_id, NULL)) AS practice_planned,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'), s.session_id, NULL)) AS exam_delivered,
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'), s.session_id, NULL)) AS exam_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM', s.session_id, NULL)) AS exam_planned,
             -- Module Quiz: EXAM sessions whose name starts with quiz or contains module
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED')
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED')
                               AND (LOWER(COALESCE(s.session_name_enum, '')) LIKE 'quiz%'
                                    OR LOWER(COALESCE(s.session_name_enum, '')) LIKE '%module%'),
                               s.session_id, NULL)) AS mq_delivered,
@@ -8245,6 +8231,30 @@ def main():
                 return round(((scheduled - till_date) / till_date) * 100, 1)
             return None
 
+        # ── Scheduled counts from schedule table (session_id + session_status) ──
+        with st.spinner("Loading scheduled session counts..."):
+            scheduled_counts_df = fetch_course_scheduled_counts(batch, semester, selected_university, selected_section)
+
+        _sched_lookup: dict[str, dict] = {}
+        if not scheduled_counts_df.empty and "course_title" in scheduled_counts_df.columns:
+            for _, _sr in scheduled_counts_df.iterrows():
+                _st = str(_sr.get("course_title") or "").strip()
+                if _st:
+                    _sched_lookup[normalize_text(_st)] = _sr.to_dict()
+
+        def _course_scheduled(course_name: str) -> dict | None:
+            key = normalize_text(course_name)
+            if key in _sched_lookup:
+                return _sched_lookup[key]
+            for k, v in _sched_lookup.items():
+                if key in k or k in key:
+                    return v
+            canonical_key = normalize_text(normalize_course_name(course_name, semester))
+            for k, v in _sched_lookup.items():
+                if normalize_text(normalize_course_name(k, semester)) == canonical_key:
+                    return v
+            return None
+
         course_rows = []
         for _, ct_row in course_table.iterrows():
             cname = ct_row["Course"]
@@ -8268,11 +8278,22 @@ def main():
             lec_till  = round(_lec  * _pacing_ratio, 1)
             prac_till = round(_prac * _pacing_ratio, 1)
             mq_till   = round(_exam * _pacing_ratio, 1)
-            # Use direct schedule table counts (session_id + session_status).
-            # Fall back to derived Designed × Delivery% only if schedule data is absent.
-            lec_sched  = _safe_f(dr.get("lec_scheduled"))  if dr and dr.get("lec_scheduled")  is not None else round(_lec  * (_safe_f(lecture_pct)  / 100), 1)
-            prac_sched = _safe_f(dr.get("prac_scheduled")) if dr and dr.get("prac_scheduled") is not None else round(_prac * (_safe_f(practice_pct) / 100), 1)
-            mq_sched   = _safe_f(dr.get("mq_scheduled"))   if dr and dr.get("mq_scheduled")   is not None else round(_exam * (_safe_f(exam_pct)     / 100), 1)
+
+            # Use direct COUNT(DISTINCT session_id WHERE status=conducted) from schedule table.
+            # Fall back to derived Designed × Delivery% only if schedule data is unavailable.
+            _sched_row = _course_scheduled(cname)
+            def _sched_val(key, fallback):
+                if _sched_row is not None:
+                    v = _sched_row.get(key)
+                    if v is not None:
+                        try:
+                            return float(v)
+                        except (TypeError, ValueError):
+                            pass
+                return fallback
+            lec_sched  = _sched_val("lec_scheduled",  round(_lec  * (_safe_f(lecture_pct)  / 100), 1))
+            prac_sched = _sched_val("prac_scheduled", round(_prac * (_safe_f(practice_pct) / 100), 1))
+            mq_sched   = _sched_val("mq_scheduled",   round(_exam * (_safe_f(exam_pct)     / 100), 1))
 
             course_rows.append({
                 "course":         cname,
