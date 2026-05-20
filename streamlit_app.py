@@ -8287,10 +8287,10 @@ def main():
             prac_till = round(_prac * _pacing_ratio, 1)
             mq_till   = round(_exam * _pacing_ratio, 1)
 
-            # Use direct COUNT(DISTINCT session_id WHERE status=conducted) from schedule table.
-            # Fall back to derived Designed × Delivery% only if schedule data is unavailable.
+            # Scheduled = COUNT(DISTINCT session_id WHERE session_status IN ('ON_TIME', 'DELIVERED_DELAYED'))
+            # Direct from schedule table only — no fallback formula.
             _sched_row = _course_scheduled(cname)
-            def _sched_val(key, fallback):
+            def _sched_val(key):
                 if _sched_row is not None:
                     v = _sched_row.get(key)
                     if v is not None:
@@ -8298,10 +8298,10 @@ def main():
                             return float(v)
                         except (TypeError, ValueError):
                             pass
-                return fallback
-            lec_sched  = _sched_val("lec_scheduled",  round(_lec  * (_safe_f(lecture_pct)  / 100), 1))
-            prac_sched = _sched_val("prac_scheduled", round(_prac * (_safe_f(practice_pct) / 100), 1))
-            mq_sched   = _sched_val("mq_scheduled",   round(_exam * (_safe_f(exam_pct)     / 100), 1))
+                return None
+            lec_sched  = _sched_val("lec_scheduled")
+            prac_sched = _sched_val("prac_scheduled")
+            mq_sched   = _sched_val("mq_scheduled")
 
             course_rows.append({
                 "course":         cname,
