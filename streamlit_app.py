@@ -790,8 +790,7 @@ def shift_iso_date(iso_date: str, year_delta: int = 0) -> str:
 def get_global_semester_date_range(semester: str, batch: str) -> tuple[str, str] | None:
     """
     Return (earliest_start_iso, latest_end_iso) across all institutes for a semester.
-    Used for SQL BETWEEN filters that need semester scope without per-institute name matching.
-    Returns None if no date windows are defined.
+    Used as a fallback when the live DB query is unavailable.
     """
     windows = SEMESTER_DATES_BY_SEMESTER.get(semester)
     if not windows:
@@ -1001,6 +1000,58 @@ def get_available_semesters_for_batch(batch: str):
     except Exception:
         pass
     return get_date_based_available_semesters(batch)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_semester_actual_date_range(batch: str, semester: str) -> tuple[str, str] | None:
+    """
+    Query portal_courses + session_adherence to get the actual MIN/MAX session
+    dates for this batch + semester combination.
+
+    This is the source-of-truth date range used to filter skill/graded
+    assessment records — no hardcoded dates, no institute-name whitelist.
+    Falls back to get_global_semester_date_range if the DB query fails.
+    """
+    refs = get_table_refs()
+    sem_num = "1" if "1" in semester else ("2" if "2" in semester else "")
+
+    portal_where = [
+        "TRIM(COALESCE(p.institute_name, '')) != ''",
+        "TRIM(COALESCE(p.sem_course_id, '')) != ''",
+    ]
+    if sem_num:
+        portal_where.append(f"LOWER(COALESCE(p.semester_title, '')) LIKE '%semester {sem_num}%'")
+    if batch and batch.strip():
+        portal_where.append(batch_sql_filter(batch, "p.batch_name"))
+
+    sa_where = [
+        "TRIM(COALESCE(sa.semester_course_id, '')) != ''",
+        "sa.session_date IS NOT NULL",
+    ]
+    if batch and batch.strip():
+        sa_where.append(batch_sql_filter(batch, "sa.batch_name"))
+
+    sql = f"""
+        SELECT
+          CAST(MIN(DATE(sa.session_date)) AS STRING) AS sem_start,
+          CAST(MAX(DATE(sa.session_date)) AS STRING) AS sem_end
+        FROM {refs["portal_courses"]} p
+        JOIN {refs["session_adherence"]} sa
+          ON REPLACE(p.sem_course_id, '-', '') = TRIM(CAST(sa.semester_course_id AS STRING))
+        WHERE {' AND '.join(portal_where)}
+          AND {' AND '.join(sa_where)}
+    """
+    try:
+        df = run_query(sql)
+        if not df.empty:
+            start = str(df.iloc[0].get("sem_start") or "").strip()
+            end   = str(df.iloc[0].get("sem_end")   or "").strip()
+            if start and end and start not in ("None", "NaT", "nan"):
+                return start[:10], end[:10]
+    except Exception:
+        pass
+    # Fallback to hardcoded ranges
+    return get_global_semester_date_range(semester, batch)
 
 
 def get_semester_window_clause(semester: str, batch: str, institute_expr: str, date_expr: str) -> str:
@@ -3107,7 +3158,7 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
         _quoted = ", ".join(f"'{sql_escape(n)}'" for n in _actual_batch_names)
         base_where.append(f"TRIM(CAST(sg.batch_name AS STRING)) IN ({_quoted})")
     # Scope to the correct semester using a global date range (no institute-name whitelist)
-    _sg_sem_range = get_global_semester_date_range(semester, batch)
+    _sg_sem_range = fetch_semester_actual_date_range(batch, semester)
     if _sg_sem_range:
         base_where.append(f"{date_col} BETWEEN '{_sg_sem_range[0]}' AND '{_sg_sem_range[1]}'")
 
@@ -3298,7 +3349,7 @@ def fetch_skill_assessment_detail(batch: str, semester: str, institute: str, sec
     date_expr = "DATE(t.assessment_start_datetime)"
     # Use global semester date range (no per-institute name matching) to scope to the
     # correct semester without creating a whitelist that excludes unknown institute names.
-    _sem_range = get_global_semester_date_range(semester, batch)
+    _sem_range = fetch_semester_actual_date_range(batch, semester)
     if _sem_range:
         where_clauses.append(f"{date_expr} BETWEEN '{_sem_range[0]}' AND '{_sem_range[1]}'")
     if section:
@@ -3711,7 +3762,7 @@ def fetch_assessment_data(batch: str, semester: str) -> pd.DataFrame:
 
     # Semester date range filter — use a global (non-institute-specific) range so we don't
     # create an institute-name whitelist. This ensures Sem 1 and Sem 2 return distinct data.
-    _sem_date_range = get_global_semester_date_range(semester, batch)
+    _sem_date_range = fetch_semester_actual_date_range(batch, semester)
 
     legacy_where_clauses = [
         "u.user_id IS NOT NULL",
