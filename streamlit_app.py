@@ -2477,9 +2477,11 @@ def fetch_course_delivery_stats(batch: str, semester: str, institute: str, secti
         f"LOWER(TRIM(COALESCE(sa.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
         "TRIM(COALESCE(sa.semester_course_id, '')) != ''",
     ]
-    window_clause = get_semester_window_clause(semester, batch, "sa.institute_name", "sa.session_date")
-    if window_clause:
-        sa_where.append(window_clause)
+    # NOTE: intentionally NOT applying get_semester_window_clause here.
+    # The sem_course_id JOIN with portal_courses (filtered to this semester's courses)
+    # is sufficient for semester scoping. A date filter on session_date would exclude
+    # quizzes that exist in the design but haven't been conducted yet, causing the
+    # Designed count to be lower than the institute-level count (which has no date filter).
     if batch and batch.strip():
         sa_where.append(batch_sql_filter(batch, "sa.batch_name"))
     if section:
