@@ -787,6 +787,108 @@ def shift_iso_date(iso_date: str, year_delta: int = 0) -> str:
     return f"{parts[0] + year_delta:04d}-{parts[1]:02d}-{parts[2]:02d}"
 
 
+def get_global_semester_date_range(semester: str, batch: str) -> tuple[str, str] | None:
+    """
+    Return (earliest_start_iso, latest_end_iso) across all institutes for a semester.
+    Used for SQL BETWEEN filters that need semester scope without per-institute name matching.
+    Returns None if no date windows are defined.
+    """
+    windows = SEMESTER_DATES_BY_SEMESTER.get(semester)
+    if not windows:
+        return None
+    year_shift = get_batch_year_shift(batch)
+    starts, ends = [], []
+    for window in windows.values():
+        s = shift_iso_date(to_iso_date(window["start"]), year_shift)
+        e = shift_iso_date(to_iso_date(window["end"]), year_shift)
+        if s:
+            starts.append(s)
+        if e:
+            ends.append(e)
+    if not starts or not ends:
+        return None
+    return min(starts), max(ends)
+
+
+def filter_df_by_semester_dates(
+    df: pd.DataFrame,
+    date_col: str,
+    inst_col: str,
+    semester: str,
+    batch: str,
+) -> pd.DataFrame:
+    """
+    Post-filter a DataFrame to only keep rows whose date falls within the
+    semester window for that row's institute.
+
+    Replaces the SQL get_semester_window_clause approach, which created an
+    institute-name whitelist. Here we use fuzzy institute matching (exact →
+    substring → acronym) so institutes with differing name formats are still
+    matched correctly. Rows whose institute has no defined window are kept.
+    """
+    if df.empty:
+        return df
+    windows = SEMESTER_DATES_BY_SEMESTER.get(semester)
+    if not windows:
+        return df
+
+    year_shift = get_batch_year_shift(batch)
+    stop_words = {"of", "the", "and", "to", "for", "a", "an", "at", "in", "&"}
+
+    # Build lookup: normalize_text(institute_name) → (start_date, end_date)
+    date_ranges: dict[str, tuple] = {}
+    for inst_name, window in windows.items():
+        start = datetime.strptime(
+            shift_iso_date(to_iso_date(window["start"]), year_shift), "%Y-%m-%d"
+        ).date()
+        end = datetime.strptime(
+            shift_iso_date(to_iso_date(window["end"]), year_shift), "%Y-%m-%d"
+        ).date()
+        date_ranges[normalize_text(inst_name)] = (start, end)
+
+    all_keys = list(date_ranges.keys())
+
+    def _get_range(inst_name: str):
+        norm = normalize_text(inst_name)
+        if norm in date_ranges:
+            return date_ranges[norm]
+        for key in all_keys:
+            if (norm and key) and (norm in key or key in norm):
+                return date_ranges[key]
+        # Acronym: first letter of each significant word
+        words = [w for w in norm.split() if w and w not in stop_words]
+        if words:
+            acronym = "".join(w[0] for w in words)
+            if acronym in date_ranges:
+                return date_ranges[acronym]
+        return None  # unknown institute — no filtering
+
+    # Cache range per unique institute name to avoid repeated lookups
+    _range_cache: dict[str, tuple | None] = {}
+
+    def _in_range(row) -> bool:
+        inst_name = str(row.get(inst_col) or "").strip()
+        if inst_name not in _range_cache:
+            _range_cache[inst_name] = _get_range(inst_name)
+        range_ = _range_cache[inst_name]
+        if range_ is None:
+            return True  # no window defined — keep row
+        date_val = row.get(date_col)
+        if date_val is None or str(date_val) in ("None", "NaT", "nan", ""):
+            return True
+        try:
+            if hasattr(date_val, "date"):
+                row_date = date_val.date()
+            else:
+                row_date = datetime.strptime(str(date_val)[:10], "%Y-%m-%d").date()
+        except Exception:
+            return True
+        return range_[0] <= row_date <= range_[1]
+
+    mask = df.apply(_in_range, axis=1)
+    return df[mask]
+
+
 def should_apply_batch_filter(batch: str) -> bool:
     return bool(batch and batch.strip())
 
@@ -3004,6 +3106,10 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
     if _actual_batch_names:
         _quoted = ", ".join(f"'{sql_escape(n)}'" for n in _actual_batch_names)
         base_where.append(f"TRIM(CAST(sg.batch_name AS STRING)) IN ({_quoted})")
+    # Scope to the correct semester using a global date range (no institute-name whitelist)
+    _sg_sem_range = get_global_semester_date_range(semester, batch)
+    if _sg_sem_range:
+        base_where.append(f"{date_col} BETWEEN '{_sg_sem_range[0]}' AND '{_sg_sem_range[1]}'")
 
     base_where_sql = ' AND '.join(base_where)
 
@@ -3190,9 +3296,11 @@ def fetch_skill_assessment_detail(batch: str, semester: str, institute: str, sec
     ]
     institute_expr = "COALESCE(NULLIF(TRIM(t.institute_name), ''), u.institute_name)"
     date_expr = "DATE(t.assessment_start_datetime)"
-    # NOTE: do NOT apply get_semester_window_clause — it creates a strict institute-name
-    # whitelist that excludes universities whose DB name differs from the hardcoded key.
-    # assessment_topic has no batch_name column — batch filter applied inside the users CTE.
+    # Use global semester date range (no per-institute name matching) to scope to the
+    # correct semester without creating a whitelist that excludes unknown institute names.
+    _sem_range = get_global_semester_date_range(semester, batch)
+    if _sem_range:
+        where_clauses.append(f"{date_expr} BETWEEN '{_sem_range[0]}' AND '{_sem_range[1]}'")
     if section:
         where_clauses.append(f"LOWER(TRIM(COALESCE(t.section_name, u.section_name, ''))) = LOWER('{sql_escape(section)}')")
 
@@ -3601,7 +3709,10 @@ def fetch_assessment_data(batch: str, semester: str) -> pd.DataFrame:
     except Exception:
         pass
 
-    # No hardcoded date window — assessment dates are read directly from the table.
+    # Semester date range filter — use a global (non-institute-specific) range so we don't
+    # create an institute-name whitelist. This ensures Sem 1 and Sem 2 return distinct data.
+    _sem_date_range = get_global_semester_date_range(semester, batch)
+
     legacy_where_clauses = [
         "u.user_id IS NOT NULL",
         "TRIM(COALESCE(u.institute_name, '')) != ''",
@@ -3609,6 +3720,8 @@ def fetch_assessment_data(batch: str, semester: str) -> pd.DataFrame:
     if _users_batch_names:
         _u_quoted = ", ".join(f"'{sql_escape(n)}'" for n in _users_batch_names)
         legacy_where_clauses.append(f"TRIM(CAST(u.batch_name AS STRING)) IN ({_u_quoted})")
+    if _sem_date_range:
+        legacy_where_clauses.append(f"{legacy_date_expr} BETWEEN '{_sem_date_range[0]}' AND '{_sem_date_range[1]}'")
 
     topic_institute_expr = "COALESCE(NULLIF(TRIM(t.institute_name), ''), u.institute_name)"
     topic_where_clauses = [
@@ -3617,6 +3730,8 @@ def fetch_assessment_data(batch: str, semester: str) -> pd.DataFrame:
     if _topic_batch_names:
         _t_quoted = ", ".join(f"'{sql_escape(n)}'" for n in _topic_batch_names)
         topic_where_clauses.append(f"TRIM(CAST(t.batch_name AS STRING)) IN ({_t_quoted})")
+    if _sem_date_range:
+        topic_where_clauses.append(f"{topic_date_expr} BETWEEN '{_sem_date_range[0]}' AND '{_sem_date_range[1]}'")
 
     sql = f"""
         WITH users AS (
