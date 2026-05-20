@@ -166,50 +166,58 @@ PLANNED_CONTENT_SLOTS_OVERRIDES = {
 
 SEMESTER_DATES_BY_SEMESTER = {
     "Semester 1": {
-        "A Dy Patil University": {"start": "Aug 4, 2025", "end": "Dec 15, 2025"},
-        "AMET": {"start": "Sep 1, 2025", "end": "Jan 27, 2026"},
-        "Annamacharya University": {"start": "Aug 11, 2025", "end": "Jan 6, 2026"},
-        "Aurora University": {"start": "Sep 15, 2025", "end": "Jun 15, 2026"},
-        "Chaitanya Deemed-to-be University": {"start": "Aug 4, 2025", "end": "Dec 24, 2025"},
-        "Chalapathy (CITY)": {"start": "Aug 25, 2025", "end": "Jan 24, 2026"},
-        "Crescent University": {"start": "Sep 8, 2025", "end": "Dec 24, 2025"},
-        "Malla Reddy Vishwavidyapeeth": {"start": "Aug 4, 2025", "end": "Dec 31, 2025"},
-        "NIAT Chevella": {"start": "Aug 25, 2025", "end": "Jun 6, 2026"},
-        "Noida International University": {"start": "Aug 25, 2025", "end": "Dec 22, 2025"},
-        "NRI": {"start": "Aug 18, 2025", "end": "Dec 30, 2025"},
-        "NSRIT University": {"start": "Aug 18, 2025", "end": "Dec 30, 2025"},
-        "S-VYASA": {"start": "Aug 11, 2025", "end": "Jan 20, 2026"},
-        "Sanjay Ghodawat University": {"start": "Aug 11, 2025", "end": "Dec 15, 2025"},
-        "Takshasila University": {"start": "Sep 15, 2025", "end": "Jan 21, 2026"},
-        "Vivekananda global University": {"start": "Aug 25, 2025", "end": "Dec 20, 2025"},
-        "Yenapoya University": {"start": "Aug 4, 2025", "end": "Dec 23, 2025"},
+        "A Dy Patil University":                    {"start": "Aug 4, 2025",  "end": "Dec 15, 2025"},
+        "Academy of Maritime education & Technology":{"start": "Sep 1, 2025",  "end": "Jan 27, 2026"},
+        "AMET":                                      {"start": "Sep 1, 2025",  "end": "Jan 27, 2026"},
+        "Annamacharya University":                   {"start": "Aug 11, 2025", "end": "Jan 6, 2026"},
+        "Aurora University":                         {"start": "Sep 15, 2025", "end": "Jun 15, 2026"},
+        "Chaitanya Deemed-to-be University":         {"start": "Aug 4, 2025",  "end": "Dec 24, 2025"},
+        "Chalapathy":                                {"start": "Aug 25, 2025", "end": "Jan 24, 2026"},
+        "Chalapathy (CITY)":                         {"start": "Aug 25, 2025", "end": "Jan 24, 2026"},
+        "Crescent University":                       {"start": "Sep 8, 2025",  "end": "Dec 24, 2025"},
+        "Malla Reddy Vishwavidyapeeth":              {"start": "Aug 4, 2025",  "end": "Dec 31, 2025"},
+        "NIAT Chevella":                             {"start": "Aug 25, 2025", "end": "Jun 6, 2026"},
+        "Noida International":                       {"start": "Aug 25, 2025", "end": "Dec 22, 2025"},
+        "Noida International University":            {"start": "Aug 25, 2025", "end": "Dec 22, 2025"},
+        "NRI":                                       {"start": "Aug 18, 2025", "end": "Dec 30, 2025"},
+        "NRI Institute of Technology":               {"start": "Aug 18, 2025", "end": "Dec 30, 2025"},
+        "NSRIT University":                          {"start": "Aug 18, 2025", "end": "Dec 30, 2025"},
+        "NSRIT":                                     {"start": "Aug 18, 2025", "end": "Dec 30, 2025"},
+        "S-VYASA":                                   {"start": "Aug 11, 2025", "end": "Jan 20, 2026"},
+        "Sanjay Ghodawat University":                {"start": "Aug 11, 2025", "end": "Dec 15, 2025"},
+        "Takshasila University":                     {"start": "Sep 15, 2025", "end": "Jan 21, 2026"},
+        "Takshashila University":                    {"start": "Sep 15, 2025", "end": "Jan 21, 2026"},
+        "Vivekananda global University":             {"start": "Aug 25, 2025", "end": "Dec 20, 2025"},
+        "Yenapoya University":                       {"start": "Aug 4, 2025",  "end": "Dec 23, 2025"},
+        "Yenepoya University":                       {"start": "Aug 4, 2025",  "end": "Dec 23, 2025"},
     },
     "Semester 2": {
-        "Sanjay Ghodawat University": {"start": "Jan 5, 2026", "end": "Jun 13, 2026"},
-        "Vivekananda global University": {"start": "Jan 2, 2026", "end": "May 30, 2026"},
-        "Yenepoya University": {"start": "Jan 20, 2026", "end": "Jun 5, 2026"},
-        "Yenapoya University": {"start": "Jan 20, 2026", "end": "Jun 5, 2026"},
-        "S-VYASA": {"start": "Feb 16, 2026", "end": "Jul 7, 2026"},
-        "A Dy Patil University": {"start": "Jan 5, 2026", "end": "May 15, 2026"},
-        "Takshashila University": {"start": "Feb 9, 2026", "end": "Jun 13, 2026"},
-        "Takshasila University": {"start": "Feb 9, 2026", "end": "Jun 13, 2026"},
-        "AMET": {"start": "Feb 2, 2026", "end": "Jun 9, 2026"},
-        "Noida International University": {"start": "Jan 12, 2026", "end": "Jun 6, 2026"},
-        "Noida International": {"start": "Jan 12, 2026", "end": "Jun 6, 2026"},
-        "Annamacharya University": {"start": "Jan 2, 2026", "end": "Jun 4, 2026"},
-        "NRI": {"start": "Jan 16, 2026", "end": "Jun 20, 2026"},
-        "NRI Institute of Technology": {"start": "Jan 16, 2026", "end": "Jun 20, 2026"},
-        "MRV University": {"start": "Jan 2, 2026", "end": "May 9, 2026"},
-        "Malla Reddy Vishwavidyapeeth": {"start": "Jan 2, 2026", "end": "May 9, 2026"},
-        "Chaitanya Deemed-to-be University": {"start": "Jan 19, 2026", "end": "May 18, 2026"},
-        "CDU": {"start": "Jan 19, 2026", "end": "May 18, 2026"},
-        "Crescent University": {"start": "Jan 19, 2026", "end": "May 19, 2026"},
-        "Chalapathy (CITY)": {"start": "Jan 27, 2026", "end": "Jul 11, 2026"},
-        "Chalapathy": {"start": "Jan 27, 2026", "end": "Jul 11, 2026"},
-        "NSRIT University": {"start": "Feb 9, 2026", "end": "Jul 13, 2026"},
-        "NSRIT": {"start": "Feb 9, 2026", "end": "Jul 13, 2026"},
-        "Aurora University": {"start": "Aug 12, 2025", "end": "Feb 22, 2026"},
-        "BITS": {"start": "Jan 28, 2026", "end": "Aug 15, 2026"},
+        "A Dy Patil University":                    {"start": "Jan 5, 2026",  "end": "May 15, 2026"},
+        "Academy of Maritime education & Technology":{"start": "Feb 2, 2026",  "end": "Jun 9, 2026"},
+        "AMET":                                      {"start": "Feb 2, 2026",  "end": "Jun 9, 2026"},
+        "Annamacharya University":                   {"start": "Jan 2, 2026",  "end": "Jun 4, 2026"},
+        "Aurora University":                         {"start": "Aug 12, 2025", "end": "Feb 22, 2026"},
+        "BITS":                                      {"start": "Jan 28, 2026", "end": "Aug 15, 2026"},
+        "CDU":                                       {"start": "Jan 19, 2026", "end": "May 18, 2026"},
+        "Chaitanya Deemed-to-be University":         {"start": "Jan 19, 2026", "end": "May 18, 2026"},
+        "Chalapathy":                                {"start": "Jan 27, 2026", "end": "Jul 11, 2026"},
+        "Chalapathy (CITY)":                         {"start": "Jan 27, 2026", "end": "Jul 11, 2026"},
+        "Crescent University":                       {"start": "Jan 19, 2026", "end": "May 19, 2026"},
+        "Malla Reddy Vishwavidyapeeth":              {"start": "Jan 2, 2026",  "end": "May 9, 2026"},
+        "MRV University":                            {"start": "Jan 2, 2026",  "end": "May 9, 2026"},
+        "Noida International":                       {"start": "Jan 12, 2026", "end": "Jun 6, 2026"},
+        "Noida International University":            {"start": "Jan 12, 2026", "end": "Jun 6, 2026"},
+        "NRI":                                       {"start": "Jan 16, 2026", "end": "Jun 20, 2026"},
+        "NRI Institute of Technology":               {"start": "Jan 16, 2026", "end": "Jun 20, 2026"},
+        "NSRIT":                                     {"start": "Feb 9, 2026",  "end": "Jul 13, 2026"},
+        "NSRIT University":                          {"start": "Feb 9, 2026",  "end": "Jul 13, 2026"},
+        "S-VYASA":                                   {"start": "Feb 16, 2026", "end": "Jul 7, 2026"},
+        "Sanjay Ghodawat University":                {"start": "Jan 5, 2026",  "end": "Jun 13, 2026"},
+        "Takshashila University":                    {"start": "Feb 9, 2026",  "end": "Jun 13, 2026"},
+        "Takshasila University":                     {"start": "Feb 9, 2026",  "end": "Jun 13, 2026"},
+        "Vivekananda global University":             {"start": "Jan 2, 2026",  "end": "May 30, 2026"},
+        "Yenapoya University":                       {"start": "Jan 20, 2026", "end": "Jun 5, 2026"},
+        "Yenepoya University":                       {"start": "Jan 20, 2026", "end": "Jun 5, 2026"},
     },
 }
 
@@ -1789,17 +1797,20 @@ def fetch_semester_data(batch: str, semester: str) -> pd.DataFrame:
     if batch and batch.strip():
         portal_where.append(batch_sql_filter(batch, "p.batch_name"))
 
-    # session_adherence filters
+    # session_adherence filters (primary)
     # NOTE: do NOT apply get_semester_window_clause here — it creates a strict institute-name
-    # whitelist that excludes universities whose DB name differs from the hardcoded key
-    # (e.g. "Academy of Maritime Education & Technology" vs "AMET"). The portal_courses JOIN
-    # via sem_course_id already constrains data to the correct semester's courses.
+    # whitelist that excludes universities whose DB name differs from the hardcoded key.
     sa_where = [
         "TRIM(COALESCE(sa.semester_course_id, '')) != ''",
         "TRIM(COALESCE(sa.session_name_enum, '')) != ''",
     ]
     if batch and batch.strip():
         sa_where.append(batch_sql_filter(batch, "sa.batch_name"))
+
+    # Targeted supplement: date range for scoping SA data to this semester
+    _sem_range = fetch_semester_actual_date_range(batch, semester)
+    _sa_supp_date = f"AND DATE(sa2.session_date) BETWEEN '{_sem_range[0]}' AND '{_sem_range[1]}'" if _sem_range else ""
+    _sa_supp_batch = f"AND {batch_sql_filter(batch, 'sa2.batch_name')}" if (batch and batch.strip()) else ""
 
     sql = f"""
         WITH portal AS (
@@ -1812,8 +1823,8 @@ def fetch_semester_data(batch: str, semester: str) -> pd.DataFrame:
         ),
         sa_units AS (
           SELECT
-            TRIM(COALESCE(sa.semester_course_id, ''))             AS sem_course_id,
-            TRIM(sa.session_type)                                  AS session_type,
+            TRIM(COALESCE(sa.semester_course_id, ''))              AS sem_course_id,
+            TRIM(sa.session_type)                                   AS session_type,
             TRIM(sa.session_name_enum)                             AS session_name_enum,
             COALESCE(NULLIF(TRIM(sa.section_name), ''), 'Unknown') AS section,
             MAX(sa.total_sessions_planned)                         AS max_planned,
@@ -1824,18 +1835,73 @@ def fetch_semester_data(batch: str, semester: str) -> pd.DataFrame:
           GROUP BY sa.semester_course_id, session_type, session_name_enum, section
         ),
         joined AS (
+          -- portal_courses drives the institute+course list; LEFT JOIN gets session data.
+          -- Universities in portal_courses but missing from session_adherence still appear (sessions=0).
           SELECT
             p.course,
             p.institute,
-            su.section,
+            COALESCE(su.section, 'Unknown')         AS section,
             p.sem_course_id,
-            su.session_type,
-            su.session_name_enum,
-            su.max_planned,
-            su.max_delivered,
+            COALESCE(su.session_type, '')            AS session_type,
+            COALESCE(su.session_name_enum, '')       AS session_name_enum,
+            COALESCE(su.max_planned, 0)              AS max_planned,
+            COALESCE(su.max_delivered, 0)            AS max_delivered,
             su.last_date
           FROM portal p
-          JOIN sa_units su ON su.sem_course_id = p.sem_course_id
+          LEFT JOIN sa_units su ON su.sem_course_id = p.sem_course_id
+        ),
+        sa_targeted AS (
+          -- Targeted fallback for universities that may be in session_adherence but not portal_courses.
+          -- Uses keyword matching on institute_name mapped to canonical names.
+          -- Scoped to semester date range to avoid pulling other semesters' data.
+          SELECT DISTINCT
+            CASE
+              WHEN LOWER(TRIM(sa2.institute_name)) LIKE '%annamacharya%'
+                THEN 'Annamacharya University'
+              WHEN LOWER(TRIM(sa2.institute_name)) LIKE '%chalapathy%'
+                OR  LOWER(TRIM(sa2.institute_name)) LIKE '%chalapathi%'
+                THEN 'Chalapathy'
+              WHEN LOWER(TRIM(sa2.institute_name)) LIKE '%noida international%'
+                THEN 'Noida International'
+              WHEN LOWER(TRIM(sa2.institute_name)) LIKE '%maritime%'
+                OR  LOWER(TRIM(sa2.institute_name)) LIKE '%amet%'
+                THEN 'Academy of Maritime education & Technology'
+            END AS institute,
+            TRIM(COALESCE(sa2.semester_course_id, '')) AS sem_course_id
+          FROM {refs["session_adherence"]} sa2
+          WHERE (
+               LOWER(TRIM(sa2.institute_name)) LIKE '%annamacharya%'
+            OR LOWER(TRIM(sa2.institute_name)) LIKE '%chalapathy%'
+            OR LOWER(TRIM(sa2.institute_name)) LIKE '%chalapathi%'
+            OR LOWER(TRIM(sa2.institute_name)) LIKE '%noida international%'
+            OR LOWER(TRIM(sa2.institute_name)) LIKE '%maritime%'
+            OR LOWER(TRIM(sa2.institute_name)) LIKE '%amet%'
+          )
+          AND TRIM(COALESCE(sa2.semester_course_id, '')) != ''
+          AND TRIM(COALESCE(sa2.session_name_enum, '')) != ''
+          {_sa_supp_batch}
+          {_sa_supp_date}
+          AND TRIM(COALESCE(sa2.semester_course_id, '')) NOT IN (SELECT sem_course_id FROM portal)
+        ),
+        joined_targeted AS (
+          SELECT
+            ''                                 AS course,
+            st.institute,
+            COALESCE(su.section, 'Unknown')    AS section,
+            st.sem_course_id,
+            COALESCE(su.session_type, '')      AS session_type,
+            COALESCE(su.session_name_enum, '') AS session_name_enum,
+            COALESCE(su.max_planned, 0)        AS max_planned,
+            COALESCE(su.max_delivered, 0)      AS max_delivered,
+            su.last_date
+          FROM sa_targeted st
+          LEFT JOIN sa_units su ON su.sem_course_id = st.sem_course_id
+          WHERE st.institute IS NOT NULL
+        ),
+        all_joined AS (
+          SELECT * FROM joined
+          UNION ALL
+          SELECT * FROM joined_targeted
         ),
         roster AS (
           SELECT
@@ -1858,12 +1924,12 @@ def fetch_semester_data(batch: str, semester: str) -> pd.DataFrame:
           j.institute,
           j.section,
           j.session_type,
-          COUNT(DISTINCT j.session_name_enum) AS sessions,
+          COUNT(DISTINCT NULLIF(j.session_name_enum, '')) AS sessions,
           COALESCE(r.students, 0) AS students,
           ROUND(
             100 * SAFE_DIVIDE(
-              COUNT(DISTINCT IF(j.max_delivered > 0, j.session_name_enum, NULL)),
-              NULLIF(COUNT(DISTINCT j.session_name_enum), 0)
+              COUNT(DISTINCT IF(j.max_delivered > 0, NULLIF(j.session_name_enum, ''), NULL)),
+              NULLIF(COUNT(DISTINCT NULLIF(j.session_name_enum, '')), 0)
             ), 2
           ) AS completion,
           0 AS avg_time,
@@ -1873,14 +1939,13 @@ def fetch_semester_data(batch: str, semester: str) -> pd.DataFrame:
           '{sql_escape(semester)}' AS semester,
           CAST(MAX(j.last_date) AS STRING) AS report_date,
           j.sem_course_id
-        FROM joined j
+        FROM all_joined j
         LEFT JOIN roster r
           ON r.institute = j.institute
           AND r.section = j.section
         LEFT JOIN roster_counts rc
           ON rc.institute = j.institute
         GROUP BY course, institute, section, session_type, students, section_count, sem_course_id
-        HAVING sessions > 0
         ORDER BY institute, section, course
     """
     return run_query(sql)
@@ -4473,6 +4538,566 @@ def _bar_class(value, green_threshold=75, orange_threshold=50):
     return "bar-red"
 
 
+def render_institute_overview_table(
+    institute: str,
+    course_rows: list[dict],
+    overview_df: pd.DataFrame,
+    semester: str,
+) -> None:
+    """
+    Renders a single-row HTML institute-level summary above the course matrix.
+    Uses the exact same 8 color-groups as render_course_overview_table with all
+    the same columns, plus Mode / Start Date / End Date in the Subject Info group.
+    """
+    if not course_rows:
+        return
+
+    import html as _html_mod
+
+    # ── Shared color-group palette (identical to course overview) ────────────
+    _G = {
+        1: ("#EEF2FF", "#C7D2FE", "#4338CA", "#6366F1"),
+        2: ("#F0FDF4", "#BBF7D0", "#15803D", "#16A34A"),
+        3: ("#F8FAFC", "#E2E8F0", "#94A3B8", "#CBD5E1"),
+        4: ("#FFF7ED", "#FED7AA", "#C2410C", "#D97706"),
+        5: ("#F0FDFA", "#99F6E4", "#0F766E", "#0D9488"),
+        6: ("#FAF5FF", "#E9D5FF", "#6D28D9", "#7C3AED"),
+        7: ("#FFFBEB", "#FDE68A", "#92400E", "#B45309"),
+        8: ("#FFF1F2", "#FECDD3", "#BE123C", "#E11D48"),
+    }
+
+    # ── Value helpers ────────────────────────────────────────────────────────
+    def _v(val, decimals=1, suffix="", empty="--"):
+        if val is None:
+            return empty
+        try:
+            f = float(val)
+            if f != f:
+                return empty
+            return f"{int(round(f))}{suffix}" if decimals == 0 else f"{f:.{decimals}f}{suffix}"
+        except (TypeError, ValueError):
+            return str(val) if val else empty
+
+    def _pct_color(val, green=75, orange=50):
+        if val is None: return "#94A3B8"
+        try: f = float(val)
+        except Exception: return "#94A3B8"
+        return "#16A34A" if f >= green else ("#D97706" if f >= orange else "#DC2626")
+
+    def _dev_color(val):
+        if val is None: return "#94A3B8"
+        try: f = float(val)
+        except Exception: return "#94A3B8"
+        return "#16A34A" if f >= 0 else ("#D97706" if f >= -25 else "#DC2626")
+
+    # ── Pull mode / dates from overview_df ───────────────────────────────────
+    _mode = _start = _end = "--"
+    if overview_df is not None and not overview_df.empty and "Universities" in overview_df.columns:
+        _ov_match = overview_df[overview_df["Universities"].str.strip().str.lower() == institute.strip().lower()]
+        if not _ov_match.empty:
+            _r = _ov_match.iloc[0]
+            _mode  = str(_r.get("Delivery Mode") or "--")
+            _start = str(_r.get("Start Date")    or "--")
+            _end   = str(_r.get("End Date")      or "--")
+
+    # ── Aggregate from course_rows ───────────────────────────────────────────
+    def _fsum(key):
+        vals = [float(r[key]) for r in course_rows
+                if r.get(key) is not None and not (isinstance(r.get(key), float) and r[key] != r[key])]
+        return round(sum(vals), 1) if vals else None
+
+    def _favg(key):
+        vals = [float(r[key]) for r in course_rows
+                if r.get(key) is not None and not (isinstance(r.get(key), float) and r[key] != r[key])]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    _total_designed    = _fsum("total_slots")
+    _lec_designed      = _fsum("lecture_slots")
+    _lec_till          = _fsum("lec_till_date")
+    _lec_sched         = _fsum("lec_scheduled")
+    _lec_dev           = _favg("lec_deviation")
+    _prac_designed     = _fsum("practice_slots")
+    _prac_till         = _fsum("prac_till_date")
+    _prac_sched        = _fsum("prac_scheduled")
+    _prac_dev          = _favg("prac_deviation")
+    _prac_completion   = _favg("practice_completion_pct")
+    _mq_designed       = _fsum("exam_slots")
+    _mq_till           = _fsum("mq_till_date")
+    _mq_sched          = _fsum("mq_scheduled")
+    _mq_dev            = _favg("mq_deviation")
+    _mq_attend         = _favg("mq_attendance_pct")
+    _mq_pass           = _favg("module_quiz_pass_pct")
+    _skill_designed    = _fsum("skill_designed")
+    _skill_till        = _fsum("skill_till_date")
+    _skill_attend      = _favg("skill_attendance_pct")
+    _skill_pass        = _favg("skill_pass_pct")
+    _acad_attend       = _favg("academic_attendance_pct")
+    _acad_pass         = _favg("academic_pass_pct")
+
+    # ── Cell builders ────────────────────────────────────────────────────────
+    _ROW_BG = "#F8FAFF"
+    _TD = (f"padding:5px 10px;text-align:center;font-size:0.78rem;"
+           f"border-bottom:1px solid #E2E8F0;white-space:nowrap;"
+           f"background:{_ROW_BG};font-weight:700;color:#1E293B;")
+
+    def _cell(val, decimals=1, suffix="", color=None):
+        txt = _v(val, decimals, suffix)
+        col = f"color:{color};" if color else ""
+        return f'<td style="{_TD}{col}">{txt}</td>'
+
+    def _pct_cell(val, green=75, orange=50):
+        return _cell(val, 1, "%", color=_pct_color(val, green, orange))
+
+    def _dev_cell(val):
+        return _cell(val, 1, "%", color=_dev_color(val))
+
+    def _na_cell():
+        return f'<td style="{_TD}color:#CBD5E1;">--</td>'
+
+    # ── Header helpers ────────────────────────────────────────────────────────
+    def _grp_th(label, colspan, g):
+        bg, border, text, _ = _G[g]
+        return (
+            f'<th colspan="{colspan}" style="background:{bg};color:{text};'
+            f'padding:7px 10px;text-align:center;font-weight:700;font-size:0.69rem;'
+            f'letter-spacing:0.06em;text-transform:uppercase;'
+            f'border-bottom:2px solid {border};white-space:nowrap;">{label}</th>'
+        )
+
+    def _col_th(label, g):
+        bg, _, _, sub = _G[g]
+        return (
+            f'<th style="background:{bg};color:{sub};padding:6px 8px;'
+            f'text-align:center;font-weight:600;font-size:0.69rem;'
+            f'border-bottom:2px solid #E2E8F0;white-space:nowrap;min-width:72px;">{label}</th>'
+        )
+
+    # ── Group header row (Subject Info = 5 cols; rest identical to course table) ──
+    grp_row = (
+        _grp_th("Institute Info", 5, 1)
+        + _grp_th("Lectures", 4, 2)
+        + _grp_th("Classroom Quiz", 3, 3)
+        + _grp_th("Practice", 4, 4)
+        + _grp_th("Practice Completion", 1, 5)
+        + _grp_th("Module Quiz", 6, 6)
+        + _grp_th("Skill Assessment", 5, 7)
+        + _grp_th("Academic", 2, 8)
+    )
+
+    col_row = (
+        _col_th("Institute", 1) + _col_th("Mode", 1) + _col_th("Start Date", 1)
+        + _col_th("End Date", 1) + _col_th("Total Designed", 1)
+        + _col_th("Designed", 2) + _col_th("Designed Till Date", 2)
+        + _col_th("Scheduled", 2) + _col_th("Deviation %", 2)
+        + _col_th("Attend %", 3) + _col_th("Q Attempt", 3) + _col_th("Q Correct", 3)
+        + _col_th("Designed", 4) + _col_th("Designed Till Date", 4)
+        + _col_th("Scheduled", 4) + _col_th("Deviation %", 4)
+        + _col_th("Completion %", 5)
+        + _col_th("Designed", 6) + _col_th("Designed Till Date", 6)
+        + _col_th("Scheduled", 6) + _col_th("Deviation %", 6)
+        + _col_th("Attend %", 6) + _col_th("Pass %", 6)
+        + _col_th("Designed", 7) + _col_th("Designed Till Date", 7)
+        + _col_th("Scheduled", 7) + _col_th("Attend %", 7) + _col_th("Pass %", 7)
+        + _col_th("Attend %", 8) + _col_th("Pass %", 8)
+    )
+
+    # ── Data row ──────────────────────────────────────────────────────────────
+    _bg1, _, _text1, _ = _G[1]
+    _inst_td = (
+        f"padding:5px 12px;text-align:left;font-size:0.78rem;"
+        f"border-bottom:1px solid #E2E8F0;white-space:nowrap;"
+        f"background:{_ROW_BG};font-weight:700;color:{_text1};min-width:150px;"
+    )
+    _plain_td = (
+        f"padding:5px 10px;text-align:center;font-size:0.78rem;"
+        f"border-bottom:1px solid #E2E8F0;white-space:nowrap;"
+        f"background:{_ROW_BG};color:#475569;"
+    )
+
+    data_row = (
+        f'<td style="{_inst_td}">{_html_mod.escape(institute)}</td>'
+        + f'<td style="{_plain_td}">{_html_mod.escape(_mode)}</td>'
+        + f'<td style="{_plain_td}">{_html_mod.escape(_start)}</td>'
+        + f'<td style="{_plain_td}">{_html_mod.escape(_end)}</td>'
+        + _cell(_total_designed, decimals=0)
+        # Lectures
+        + _cell(_lec_designed, 0)
+        + _cell(_lec_till, 1)
+        + _cell(_lec_sched, 1)
+        + _dev_cell(_lec_dev)
+        # Classroom Quiz (no per-institute counts available)
+        + _na_cell() + _na_cell() + _na_cell()
+        # Practice
+        + _cell(_prac_designed, 0)
+        + _cell(_prac_till, 1)
+        + _cell(_prac_sched, 1)
+        + _dev_cell(_prac_dev)
+        # Practice Completion
+        + _pct_cell(_prac_completion)
+        # Module Quiz
+        + _cell(_mq_designed, 0)
+        + _cell(_mq_till, 1)
+        + _cell(_mq_sched, 1)
+        + _dev_cell(_mq_dev)
+        + _pct_cell(_mq_attend)
+        + _pct_cell(_mq_pass)
+        # Skill Assessment
+        + _cell(_skill_designed, 0)
+        + _cell(_skill_till, 1)
+        + _na_cell()   # Skill Scheduled — not tracked at course level
+        + _pct_cell(_skill_attend)
+        + _pct_cell(_skill_pass)
+        # Academic
+        + _pct_cell(_acad_attend)
+        + _pct_cell(_acad_pass)
+    )
+
+    html_out = f"""
+    <div style="margin-bottom:16px;border-radius:10px;overflow:auto;
+                border:1px solid #C7D2FE;box-shadow:0 1px 6px rgba(99,102,241,.12);">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr>{grp_row}</tr>
+          <tr>{col_row}</tr>
+        </thead>
+        <tbody>
+          <tr>{data_row}</tr>
+        </tbody>
+      </table>
+    </div>
+    """
+    st.markdown(html_out, unsafe_allow_html=True)
+
+
+def render_all_institutes_html_table(
+    all_universities: list[dict],
+    semester_df: pd.DataFrame,
+    overview_df: pd.DataFrame,
+    new_metrics: dict,
+    semester: str,
+    batch: str,
+) -> str | None:
+    """Renders all universities as rows in the institute overview HTML table format."""
+    import html as _html_mod
+
+    if not all_universities:
+        return None
+
+    # ── Value helpers ─────────────────────────────────────────────────────────
+    def _safe_f(v):
+        try:
+            f = float(v)
+            return None if f != f else f
+        except Exception:
+            return None
+
+    def _v(val, decimals=1, suffix="", empty="--"):
+        if val is None:
+            return empty
+        try:
+            f = float(val)
+            if f != f:
+                return empty
+            return f"{int(round(f))}{suffix}" if decimals == 0 else f"{f:.{decimals}f}{suffix}"
+        except (TypeError, ValueError):
+            return str(val) if val else empty
+
+    def _pct_color(val, green=75, orange=50):
+        if val is None:
+            return "#94A3B8"
+        try:
+            f = float(val)
+        except Exception:
+            return "#94A3B8"
+        return "#16A34A" if f >= green else ("#D97706" if f >= orange else "#DC2626")
+
+    def _dev_color(val):
+        if val is None:
+            return "#94A3B8"
+        try:
+            f = float(val)
+        except Exception:
+            return "#94A3B8"
+        return "#16A34A" if f >= 0 else ("#D97706" if f >= -25 else "#DC2626")
+
+    def _deviation(till, sched):
+        if till is not None and till > 0 and sched is not None:
+            return round(((sched - till) / till) * 100, 1)
+        return None
+
+    # ── Color group palette ───────────────────────────────────────────────────
+    _G = {
+        1: ("#EEF2FF", "#C7D2FE", "#4338CA", "#6366F1"),
+        2: ("#F0FDF4", "#BBF7D0", "#15803D", "#16A34A"),
+        3: ("#F8FAFC", "#E2E8F0", "#94A3B8", "#CBD5E1"),
+        4: ("#FFF7ED", "#FED7AA", "#C2410C", "#D97706"),
+        5: ("#F0FDFA", "#99F6E4", "#0F766E", "#0D9488"),
+        6: ("#FAF5FF", "#E9D5FF", "#6D28D9", "#7C3AED"),
+        7: ("#FFFBEB", "#FDE68A", "#92400E", "#B45309"),
+        8: ("#FFF1F2", "#FECDD3", "#BE123C", "#E11D48"),
+    }
+
+    # ── Cell / header builders ────────────────────────────────────────────────
+    _TD_BASE = "padding:5px 10px;text-align:center;font-size:0.78rem;border-bottom:1px solid #E2E8F0;white-space:nowrap;"
+
+    def _cell(val, decimals=1, suffix="", color=None, bg="#FFFFFF"):
+        txt = _v(val, decimals, suffix)
+        col_s = f"color:{color};" if color else "color:#1E293B;"
+        return f'<td style="{_TD_BASE}background:{bg};font-weight:700;{col_s}">{txt}</td>'
+
+    def _pct_cell(val, green=75, orange=50, bg="#FFFFFF"):
+        return _cell(val, 1, "%", color=_pct_color(val, green, orange), bg=bg)
+
+    def _dev_cell(val, bg="#FFFFFF"):
+        return _cell(val, 1, "%", color=_dev_color(val), bg=bg)
+
+    def _na_cell(bg="#FFFFFF"):
+        return f'<td style="{_TD_BASE}background:{bg};color:#CBD5E1;">--</td>'
+
+    def _grp_th(label, colspan, g):
+        bg, border, text, _ = _G[g]
+        return (
+            f'<th colspan="{colspan}" style="background:{bg};color:{text};'
+            f'padding:7px 10px;text-align:center;font-weight:700;font-size:0.69rem;'
+            f'letter-spacing:0.06em;text-transform:uppercase;'
+            f'border-bottom:2px solid {border};white-space:nowrap;">{label}</th>'
+        )
+
+    def _col_th(label, g):
+        bg, _, _, sub = _G[g]
+        return (
+            f'<th style="background:{bg};color:{sub};padding:6px 8px;'
+            f'text-align:center;font-weight:600;font-size:0.69rem;'
+            f'border-bottom:2px solid #E2E8F0;white-space:nowrap;min-width:72px;">{label}</th>'
+        )
+
+    grp_row = (
+        _grp_th("Institute Info", 5, 1)
+        + _grp_th("Lectures", 4, 2)
+        + _grp_th("Classroom Quiz", 3, 3)
+        + _grp_th("Practice", 4, 4)
+        + _grp_th("Practice Completion", 1, 5)
+        + _grp_th("Module Quiz", 6, 6)
+        + _grp_th("Skill Assessment", 5, 7)
+        + _grp_th("Academic", 2, 8)
+    )
+
+    col_row = (
+        _col_th("Institute", 1) + _col_th("Mode", 1) + _col_th("Start Date", 1)
+        + _col_th("End Date", 1) + _col_th("Total Designed", 1)
+        + _col_th("Designed", 2) + _col_th("Designed Till Date", 2)
+        + _col_th("Scheduled", 2) + _col_th("Deviation %", 2)
+        + _col_th("Attend %", 3) + _col_th("Q Attempt", 3) + _col_th("Q Correct", 3)
+        + _col_th("Designed", 4) + _col_th("Designed Till Date", 4)
+        + _col_th("Scheduled", 4) + _col_th("Deviation %", 4)
+        + _col_th("Completion %", 5)
+        + _col_th("Designed", 6) + _col_th("Designed Till Date", 6)
+        + _col_th("Scheduled", 6) + _col_th("Deviation %", 6)
+        + _col_th("Attend %", 6) + _col_th("Pass %", 6)
+        + _col_th("Designed", 7) + _col_th("Designed Till Date", 7)
+        + _col_th("Scheduled", 7) + _col_th("Attend %", 7) + _col_th("Pass %", 7)
+        + _col_th("Attend %", 8) + _col_th("Pass %", 8)
+    )
+
+    # ── Build overview lookup (keyed by lowercased university name) ───────────
+    ov_lookup: dict = {}
+    if overview_df is not None and not overview_df.empty and "Universities" in overview_df.columns:
+        for _, row in overview_df.iterrows():
+            ov_lookup[str(row["Universities"]).strip().lower()] = row.to_dict()
+
+    nm = new_metrics or {}
+    skill_graded_data: dict = nm.get("skill_graded", {})
+
+    # ── Pacing ratio ──────────────────────────────────────────────────────────
+    def _pacing(start_str: str, end_str: str) -> float:
+        try:
+            s_iso = datetime.strptime(start_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+            e_iso = datetime.strptime(end_str,   "%d/%m/%Y").strftime("%Y-%m-%d")
+            total_wd = count_weekdays_between(s_iso, e_iso)
+            if not total_wd:
+                return 0.0
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            end_eff   = e_iso if e_iso <= today_str else today_str
+            elapsed   = count_weekdays_between(s_iso, end_eff) or 0
+            return min(1.0, float(elapsed) / float(total_wd))
+        except Exception:
+            return 0.0
+
+    # ── Per-type slot count from semester_df ──────────────────────────────────
+    def _slot_count(inst_name: str, stype: str):
+        if semester_df is None or semester_df.empty:
+            return None
+        if "session_type" not in semester_df.columns:
+            return None
+        norm = inst_name.strip().lower()
+        mask = (
+            semester_df["institute"].str.strip().str.lower() == norm
+        ) & (
+            semester_df["session_type"].str.upper() == stype
+        )
+        df_t = semester_df[mask]
+        if df_t.empty:
+            return None
+        # sum sessions across courses per section, then average sections
+        per_section = df_t.groupby("section")["sessions"].sum()
+        return float(per_section.mean())
+
+    # ── Build rows ────────────────────────────────────────────────────────────
+    _, _, _text1, _ = _G[1]
+    body_rows = []
+    nav_names = []
+
+    for idx, univ in enumerate(all_universities):
+        name = univ["name"]
+        norm = name.strip().lower()
+        bg = "#F8FAFF" if idx % 2 == 0 else "#FFFFFF"
+
+        # Overview row lookup with partial-match fallback
+        ov_row = ov_lookup.get(norm)
+        if ov_row is None:
+            for k, v in ov_lookup.items():
+                if norm in k or k in norm:
+                    ov_row = v
+                    break
+
+        def _ov(col, _row=ov_row):
+            if _row is None:
+                return None
+            return _safe_f(_row.get(col))
+
+        _mode  = str(ov_row.get("Delivery Mode") or "--") if ov_row is not None else "--"
+        _start = str(ov_row.get("Start Date")    or "--") if ov_row is not None else "--"
+        _end   = str(ov_row.get("End Date")      or "--") if ov_row is not None else "--"
+
+        ratio = _pacing(_start, _end) if (_start != "--" and _end != "--") else 0.0
+
+        # Slot counts from semester_df
+        _lec  = _slot_count(name, "LECTURE")
+        _prac = _slot_count(name, "PRACTICE")
+        _exam = _slot_count(name, "EXAM")
+        _total_slots = ((_lec or 0) + (_prac or 0) + (_exam or 0)) or None
+
+        # Delivery pcts from overview_df
+        _lec_pct  = _ov("Lecture Delivery %")
+        _prac_pct = _ov("Practice Delivery %")
+        _exam_pct = _ov("Module Quiz Conduction %")
+
+        _lec_till  = round((_lec  or 0) * ratio, 1) if _lec  is not None else None
+        _prac_till = round((_prac or 0) * ratio, 1) if _prac is not None else None
+        _exam_till = round((_exam or 0) * ratio, 1) if _exam is not None else None
+
+        _lec_sched  = round((_lec  or 0) * ((_lec_pct  or 0) / 100), 1) if _lec  is not None else None
+        _prac_sched = round((_prac or 0) * ((_prac_pct or 0) / 100), 1) if _prac is not None else None
+        _exam_sched = round((_exam or 0) * ((_exam_pct or 0) / 100), 1) if _exam is not None else None
+
+        _lec_dev  = _deviation(_lec_till,  _lec_sched)
+        _prac_dev = _deviation(_prac_till, _prac_sched)
+        _exam_dev = _deviation(_exam_till, _exam_sched)
+
+        _cr_attend = _ov("Class Room Quizzes Attempt %")
+        _prac_comp = _ov("Practice Completion %")
+        _mq_attend = _ov("Module Quiz Student Participation %")
+        _mq_pass   = _ov("Module Quiz Pass %")
+
+        # Skill assessment (5 designed per semester)
+        _sg = skill_graded_data.get(norm, {})
+        _skill_cond = None
+        try:
+            _raw = _sg.get("skill_conducted")
+            if _raw is not None:
+                _skill_cond = float(_raw)
+        except Exception:
+            pass
+        _skill_till  = round(5 * ratio, 1)
+        _skill_sched = round(min(_skill_cond or 0, 5), 0) if _skill_cond is not None else None
+        _skill_attend = _ov("Skill Assessment Student Participation %")
+        _skill_pass   = _ov("Skill Assessment Pass %")
+        _acad_attend  = _ov("Academic Assessments Attempt %")
+        _acad_pass    = _ov("Academic Assessments Pass %")
+
+        # Cell styles
+        _inst_td = (
+            f"padding:5px 12px;text-align:left;font-size:0.78rem;"
+            f"border-bottom:1px solid #E2E8F0;white-space:nowrap;"
+            f"background:{bg};font-weight:700;color:{_text1};min-width:180px;"
+        )
+        _txt_td = (
+            f"padding:5px 10px;text-align:center;font-size:0.78rem;"
+            f"border-bottom:1px solid #E2E8F0;white-space:nowrap;"
+            f"background:{bg};color:#475569;"
+        )
+
+        row_html = (
+            f'<td style="{_inst_td}">{_html_mod.escape(name)}</td>'
+            + f'<td style="{_txt_td}">{_html_mod.escape(_mode)}</td>'
+            + f'<td style="{_txt_td}">{_html_mod.escape(_start)}</td>'
+            + f'<td style="{_txt_td}">{_html_mod.escape(_end)}</td>'
+            + _cell(_total_slots, 0, bg=bg)
+            # Lectures
+            + _cell(_lec,      0, bg=bg)
+            + _cell(_lec_till, 1, bg=bg)
+            + _cell(_lec_sched, 1, bg=bg)
+            + _dev_cell(_lec_dev, bg=bg)
+            # Classroom Quiz (Q Attempt / Q Correct not available at institute level)
+            + _pct_cell(_cr_attend, green=70, orange=50, bg=bg)
+            + _na_cell(bg=bg)
+            + _na_cell(bg=bg)
+            # Practice
+            + _cell(_prac,      0, bg=bg)
+            + _cell(_prac_till, 1, bg=bg)
+            + _cell(_prac_sched, 1, bg=bg)
+            + _dev_cell(_prac_dev, bg=bg)
+            # Practice Completion
+            + _pct_cell(_prac_comp, green=75, orange=50, bg=bg)
+            # Module Quiz
+            + _cell(_exam,      0, bg=bg)
+            + _cell(_exam_till, 1, bg=bg)
+            + _cell(_exam_sched, 1, bg=bg)
+            + _dev_cell(_exam_dev, bg=bg)
+            + _pct_cell(_mq_attend, green=70, orange=50, bg=bg)
+            + _pct_cell(_mq_pass,   green=70, orange=50, bg=bg)
+            # Skill Assessment
+            + _cell(5, 0, bg=bg)
+            + _cell(_skill_till,  1, bg=bg)
+            + _cell(_skill_sched, 0, bg=bg)
+            + _pct_cell(_skill_attend, green=70, orange=50, bg=bg)
+            + _pct_cell(_skill_pass,   green=70, orange=50, bg=bg)
+            # Academic
+            + _pct_cell(_acad_attend, green=70, orange=50, bg=bg)
+            + _pct_cell(_acad_pass,   green=70, orange=50, bg=bg)
+        )
+        body_rows.append(f"<tr>{row_html}</tr>")
+        nav_names.append(name)
+
+    all_html = f"""
+    <div style="margin-bottom:16px;border-radius:10px;overflow:auto;
+                border:1px solid #C7D2FE;box-shadow:0 1px 6px rgba(99,102,241,.12);">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr>{grp_row}</tr>
+          <tr>{col_row}</tr>
+        </thead>
+        <tbody>
+          {"".join(body_rows)}
+        </tbody>
+      </table>
+    </div>
+    """
+    sel = None
+    if nav_names:
+        sel = st.selectbox(
+            "Navigate to university course breakdown \u2192",
+            options=["(Select a university)"] + nav_names,
+            key="all_institutes_nav_select",
+        )
+
+    st.markdown(all_html, unsafe_allow_html=True)
+
+    if sel and sel != "(Select a university)":
+        return sel
+    return None
+
+
 def render_course_overview_table(course_rows: list[dict], section: str = "") -> str | None:
     """
     Renders the 8-color-group course overview as a custom HTML table.
@@ -6739,17 +7364,42 @@ def main():
 
         with st.expander("Metric definitions", expanded=False):
             _ov_metrics = [
-                ("Class Room Quizzes Attempt %",            "Students who attempted classroom quizzes to the total students"),
-                ("Class Room Quizzes Pass %",               "Percentage of quiz-attempted students who scored â‰¥ 80% in classroom quizzes."),
-                ("Practice Delivery %",                     "Percentage of delivered practice sessions conducted till date."),
-                ("Practice Completion %",                   "Percentage of students who completed the assigned practice sets by attempting them."),
-                ("Module Quiz Conduction %",                "Percentage of planned module quizzes that were successfully conducted till date.to the total planned module quizzes"),
-                ("Module Quiz Student Participation %",     "Percentage of session-attending students who participated in module quizzes."),
-                ("Module Quiz Pass %",                      "Percentage of module quiz participants who scored â‰¥ 80%."),
-                ("Skill Assessment Conduction %",           "Percentage of planned skill assessments that were successfully conducted till date.to the total planned skill assessments"),
-                ("Skill Assessment Student Participation %","Percentage of session-attending students who participated in skill assessments."),
-                ("Skill Assessment Pass %",                 "Percentage of students who scored â‰¥ 80% in skill assessments."),
-                ("Academic Assessments Pass %",             "Percentage of students who cleared university academic assessments/exams based on university criteria"),
+                # Institute Info
+                ("Institute",                               "University / institute name."),
+                ("Mode",                                    "Delivery mode: Full Delivery, Co Delivery, or Hybrid Delivery."),
+                ("Start Date",                              "Configured semester start date for this institute."),
+                ("End Date",                                "Configured semester end date for this institute."),
+                ("Total Designed",                          "Total planned sessions = Lecture + Practice + Module Quiz slots."),
+                # Lectures
+                ("Lectures - Designed",                     "Total lecture sessions planned for the full semester."),
+                ("Lectures - Designed Till Date",           "Pro-rated lecture sessions expected by today based on semester pacing (Designed × elapsed days / total days)."),
+                ("Lectures - Scheduled",                    "Lecture sessions actually delivered / scheduled so far (Designed × Lecture Delivery %)."),
+                ("Lectures - Deviation %",                  "Positive = ahead of schedule. Negative = behind schedule. Formula: (Scheduled − Designed Till Date) / Designed Till Date × 100."),
+                # Classroom Quiz
+                ("Classroom Quiz - Attend %",               "% of enrolled students who attempted classroom (LP_QUIZ) quizzes."),
+                # Practice
+                ("Practice - Designed",                     "Total practice sessions planned for the full semester."),
+                ("Practice - Designed Till Date",           "Pro-rated practice sessions expected by today based on semester pacing."),
+                ("Practice - Scheduled",                    "Practice sessions actually delivered so far (Designed × Practice Delivery %)."),
+                ("Practice - Deviation %",                  "Positive = ahead of schedule. Negative = behind schedule."),
+                # Practice Completion
+                ("Practice Completion %",                   "% of assigned practice content units completed by students."),
+                # Module Quiz
+                ("Module Quiz - Designed",                  "Total module quiz (EXAM-type) sessions planned for the full semester."),
+                ("Module Quiz - Designed Till Date",        "Pro-rated module quizzes expected by today based on semester pacing."),
+                ("Module Quiz - Scheduled",                 "Module quiz sessions actually conducted (Designed × Module Quiz Conduction %)."),
+                ("Module Quiz - Deviation %",               "Positive = ahead of schedule. Negative = behind schedule."),
+                ("Module Quiz - Attend %",                  "% of enrolled students who participated in module quizzes."),
+                ("Module Quiz - Pass %",                    "% of module quiz participants who passed (score ≥ 80%)."),
+                # Skill Assessment
+                ("Skill - Designed",                        "Number of skill assessments planned per semester (fixed at 5)."),
+                ("Skill - Designed Till Date",              "Pro-rated skill assessments expected by today (5 × pacing ratio)."),
+                ("Skill - Scheduled",                       "Skill assessment sessions actually conducted so far."),
+                ("Skill - Attend %",                        "% of enrolled students who participated in skill assessments."),
+                ("Skill - Pass %",                          "% of skill assessment participants who passed (score ≥ 80%)."),
+                # Academic
+                ("Academic - Attend %",                     "% of students who attempted the academic (semester-end) assessment."),
+                ("Academic - Pass %",                       "% of academic assessment participants who passed based on university criteria."),
             ]
             _metric_items = "".join(
                 f'<li style="margin-bottom:10px;">'
@@ -6791,37 +7441,48 @@ def main():
         if filtered_overview_df.empty:
             st.caption("No universities match the selected delivery mode.")
         else:
-            overview_table_key = f"overview_university_table_{st.session_state.get('overview_table_nonce', 0)}"
-            st.markdown(
-                "<div style='background:var(--surface,#fff);border:1px solid var(--border,#e2e8f0);"
-                "border-radius:12px;padding:4px 0 0 0;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow:hidden;margin-bottom:8px;'>",
-                unsafe_allow_html=True,
+            # Filter all_universities to match the mode-filtered overview
+            _filtered_names = set(filtered_overview_df["Universities"].str.strip().str.lower())
+            _filtered_univs = [u for u in all_universities if u["name"].strip().lower() in _filtered_names]
+            _nav_university = render_all_institutes_html_table(
+                _filtered_univs, semester_df, filtered_overview_df, new_metrics, semester, batch
             )
-            _overview_pct_cols = [
-                "Class Room Quizzes Attempt %", "Class Room Quizzes Pass %",
-                "CR Quiz Pass % (â‰¥60)", "CR Quiz Pass % (>80)",
-                "Lecture Delivery %", "Practice Delivery %", "Practice Completion %",
-                "Module Quiz Conduction %", "Module Quiz Student Participation %",
-                "Module Quiz Pass %", "Module Quiz Pass % (â‰¥60)", "Module Quiz Pass % (>80)",
-                "Skill Assessment Conduction %", "Skill Assessment Student Participation %", "Skill Assessment Pass %",
-                "Academic Assessments Attempt %", "Academic Assessments Pass %",
-            ]
-            _overview_styled = _apply_pct_colors(filtered_overview_df, _overview_pct_cols, deviation_cols=["Deviation %"])
-            overview_selection = st.dataframe(
-                _overview_styled,
-                use_container_width=True,
-                hide_index=True,
-                key=overview_table_key,
-                on_select="rerun",
-                selection_mode="single-row",
-                column_config={
-                    "Universities":                          st.column_config.TextColumn("Universities", width="medium"),
-                    "Delivery Mode":                         st.column_config.TextColumn("Delivery Mode", width="small"),
-                    "Start Date":                            st.column_config.TextColumn("Start Date", width="small"),
-                    "End Date":                              st.column_config.TextColumn("End Date", width="small"),
-                    "Delivery capacity slots":               st.column_config.NumberColumn("Capacity Slots", format="%.0f", width="small"),
-                    "Planned content slots":                 st.column_config.NumberColumn("Planned Slots", format="%.0f", width="small"),
-                    "Planned content slots till date":       st.column_config.NumberColumn("Planned Till Date", format="%.0f", width="small"),
+            if _nav_university:
+                queue_course_breakdown_navigation(_nav_university)
+                st.rerun()
+            # Keep legacy dataframe hidden but available (used by other views that reference filtered_overview_df)
+            if False:  # pragma: no cover — kept for reference only
+                overview_table_key = f"overview_university_table_{st.session_state.get('overview_table_nonce', 0)}"
+                st.markdown(
+                    "<div style='background:var(--surface,#fff);border:1px solid var(--border,#e2e8f0);"
+                    "border-radius:12px;padding:4px 0 0 0;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow:hidden;margin-bottom:8px;'>",
+                    unsafe_allow_html=True,
+                )
+                _overview_pct_cols = [
+                    "Class Room Quizzes Attempt %", "Class Room Quizzes Pass %",
+                    "CR Quiz Pass % (â‰¥60)", "CR Quiz Pass % (>80)",
+                    "Lecture Delivery %", "Practice Delivery %", "Practice Completion %",
+                    "Module Quiz Conduction %", "Module Quiz Student Participation %",
+                    "Module Quiz Pass %", "Module Quiz Pass % (â‰¥60)", "Module Quiz Pass % (>80)",
+                    "Skill Assessment Conduction %", "Skill Assessment Student Participation %", "Skill Assessment Pass %",
+                    "Academic Assessments Attempt %", "Academic Assessments Pass %",
+                ]
+                _overview_styled = _apply_pct_colors(filtered_overview_df, _overview_pct_cols, deviation_cols=["Deviation %"])
+                overview_selection = st.dataframe(
+                    _overview_styled,
+                    use_container_width=True,
+                    hide_index=True,
+                    key=overview_table_key,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    column_config={
+                        "Universities":                          st.column_config.TextColumn("Universities", width="medium"),
+                        "Delivery Mode":                         st.column_config.TextColumn("Delivery Mode", width="small"),
+                        "Start Date":                            st.column_config.TextColumn("Start Date", width="small"),
+                        "End Date":                             st.column_config.TextColumn("End Date", width="small"),
+                        "Delivery capacity slots":               st.column_config.NumberColumn("Capacity Slots", format="%.0f", width="small"),
+                        "Planned content slots":                 st.column_config.NumberColumn("Planned Slots", format="%.0f", width="small"),
+                        "Planned content slots till date":       st.column_config.NumberColumn("Planned Till Date", format="%.0f", width="small"),
                     "Planned slots delivered till date":     st.column_config.NumberColumn("Delivered Till Date", format="%.0f", width="small"),
                     "Deviation %":                           st.column_config.NumberColumn("Deviation %", format="%.1f%%", help="(Planned slots delivered till date âˆ' Planned content slots till date) / Planned content slots till date Ã— 100. Negative = behind schedule."),
                     "Class Room Quizzes Attempt %":          st.column_config.NumberColumn("CR Quiz Attempt %", format="%.1f%%", help="Students who attempted classroom quizzes / total enrolled Ã— 100"),
@@ -6843,19 +7504,19 @@ def main():
                     "Academic Assessments Pass %":           st.column_config.NumberColumn("Academic Pass %", format="%.1f%%", help="Students passed (section_evaluation_result=PASSED) / students attempted academic assessments Ã— 100"),
                 },
             )
-            st.markdown("</div>", unsafe_allow_html=True)
-            selected_rows = []
-            if overview_selection is not None:
-                selection_state = getattr(overview_selection, "selection", None)
-                if selection_state is not None:
-                    selected_rows = list(getattr(selection_state, "rows", []) or [])
-                elif isinstance(overview_selection, dict):
-                    selected_rows = overview_selection.get("selection", {}).get("rows", []) or []
-            if selected_rows:
-                clicked_university = filtered_overview_df.iloc[selected_rows[0]]["Universities"]
-                queue_course_breakdown_navigation(clicked_university)
-                st.session_state["overview_table_nonce"] = st.session_state.get("overview_table_nonce", 0) + 1
-                st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+                selected_rows = []
+                if overview_selection is not None:
+                    selection_state = getattr(overview_selection, "selection", None)
+                    if selection_state is not None:
+                        selected_rows = list(getattr(selection_state, "rows", []) or [])
+                    elif isinstance(overview_selection, dict):
+                        selected_rows = overview_selection.get("selection", {}).get("rows", []) or []
+                if selected_rows:
+                    clicked_university = filtered_overview_df.iloc[selected_rows[0]]["Universities"]
+                    queue_course_breakdown_navigation(clicked_university)
+                    st.session_state["overview_table_nonce"] = st.session_state.get("overview_table_nonce", 0) + 1
+                    st.rerun()
 
     elif current_view == "Series Overview":
         render_section_header("Series snapshot", "Each series groups universities by planned or delivered volume based on the selected sidebar logic.")
@@ -7431,6 +8092,7 @@ def main():
                     unsafe_allow_html=True,
                 )
 
+            render_institute_overview_table(selected_university, course_rows, overview_df, semester)
             clicked = render_course_overview_table(course_rows, section=selected_section)
             if clicked:
                 st.session_state["selected_course_for_detail"] = clicked
