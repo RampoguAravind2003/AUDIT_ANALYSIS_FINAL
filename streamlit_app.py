@@ -258,11 +258,13 @@ DELIVERY_MODE_BY_SEMESTER = {
         "A Dy Patil University": "Full Delivery",
         "AMET": "Full Delivery",
         "Chalapathy": "Hybrid Delivery",
+        "Chalapathy (CITY)": "Hybrid Delivery",
         "Vivekananda global University": "Full Delivery",
         "NSRIT": "Hybrid Delivery",
         "MRV University": "Full Delivery",
         "Takshashila University": "Co Delivery",
         "Noida International": "Co Delivery",
+        "Noida International University": "Co Delivery",
         "Crescent University": "Co Delivery",
     },
 }
@@ -279,11 +281,13 @@ WORKING_DAYS_BY_SEMESTER = {
         "A Dy Patil University": 92,
         "AMET": 85,
         "Chalapathy": 83,
+        "Chalapathy (CITY)": 83,
         "Vivekananda global University": 72,
         "NSRIT": 109,
         "MRV University": 75,
         "Takshashila University": 86,
         "Noida International": 86,
+        "Noida International University": 86,
         "Crescent University": 65,
     },
 }
@@ -300,11 +304,13 @@ EXECUTION_DAYS_BY_SEMESTER = {
         "A Dy Patil University": 81,
         "AMET": 74,
         "Chalapathy": 72,
+        "Chalapathy (CITY)": 72,
         "Vivekananda global University": 63,
         "NSRIT": 70,
         "MRV University": 64,
         "Takshashila University": 74,
         "Noida International": 74,
+        "Noida International University": 74,
         "Crescent University": 54,
     },
 }
@@ -321,11 +327,13 @@ EXECUTION_WEEKS_BY_SEMESTER = {
         "A Dy Patil University": 13.5,
         "AMET": 12.33333333,
         "Chalapathy": 12,
+        "Chalapathy (CITY)": 12,
         "Vivekananda global University": 10.5,
         "NSRIT": 10,
         "MRV University": 10.66666667,
         "Takshashila University": 12.33333333,
         "Noida International": 12.33333333,
+        "Noida International University": 12.33333333,
         "Crescent University": 10.8,
     },
 }
@@ -1384,7 +1392,18 @@ def build_university_overview_rows(
 
     def _get(d: dict, institute: str, key: str):
         # Normalize to lowercase+trimmed to match to_dict keys
-        row = d.get(str(institute).strip().lower(), {})
+        norm = str(institute).strip().lower()
+        row = d.get(norm)
+        if row is None:
+            # Partial-match fallback: handles cases where portal_courses name differs
+            # from session_adherence/schedule name (e.g. 'Chalapathy (CITY)' vs 'Chalapathy',
+            # 'Noida International University' vs 'Noida International').
+            for k in d:
+                if k and (k in norm or norm in k):
+                    row = d[k]
+                    break
+        if row is None:
+            return None
         val = row.get(key)
         if val is None or (isinstance(val, float) and pd.isna(val)):
             return None
@@ -1860,12 +1879,12 @@ def fetch_semester_data(batch: str, semester: str) -> pd.DataFrame:
                 THEN 'Annamacharya University'
               WHEN LOWER(TRIM(sa2.institute_name)) LIKE '%chalapathy%'
                 OR  LOWER(TRIM(sa2.institute_name)) LIKE '%chalapathi%'
-                THEN 'Chalapathy'
+                THEN 'Chalapathy (CITY)'
               WHEN LOWER(TRIM(sa2.institute_name)) LIKE '%noida international%'
-                THEN 'Noida International'
+                THEN 'Noida International University'
               WHEN LOWER(TRIM(sa2.institute_name)) LIKE '%maritime%'
                 OR  LOWER(TRIM(sa2.institute_name)) LIKE '%amet%'
-                THEN 'Academy of Maritime education & Technology'
+                THEN 'AMET'
             END AS institute,
             TRIM(COALESCE(sa2.semester_course_id, '')) AS sem_course_id
           FROM {refs["session_adherence"]} sa2
@@ -2467,26 +2486,25 @@ def fetch_practice_completion_by_course(batch: str, semester: str, institute: st
 def fetch_course_delivery_stats(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
     """
     Returns per-course planned/delivered totals and LPE-style unit counts for a single institute.
-    Source: session_adherence joined to portal_courses via semester_course_id → sem_course_id.
-    Groups by portal_courses.sem_course_id so titles are canonical and ID-based lookup is reliable.
+
+    Designed (lecture_slots, practice_slots, exam_slots):
+      Source: session_adherence joined via sem_course_id — COUNT(DISTINCT session_name_enum)
+      No date filter so all designed units are counted regardless of conduction status.
+
+    Scheduled (lec_scheduled, prac_scheduled, mq_scheduled):
+      Source: schedule table — COUNT(DISTINCT session_id WHERE session_status IN
+              COMPLETED / DELIVERED / CONDUCTED) averaged across sections.
+      This is a direct count, NOT a derived Designed × Delivery% formula.
     """
     refs = get_table_refs()
     sem_num = "1" if "1" in semester else ("2" if "2" in semester else "")
+    _empty = pd.DataFrame(columns=[
+        "course", "sem_course_id", "total_planned", "total_delivered",
+        "lecture_slots", "practice_slots", "exam_slots", "adherence_pct",
+        "lec_scheduled", "prac_scheduled", "mq_scheduled",
+    ])
 
-    sa_where = [
-        f"LOWER(TRIM(COALESCE(sa.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
-        "TRIM(COALESCE(sa.semester_course_id, '')) != ''",
-    ]
-    # NOTE: intentionally NOT applying get_semester_window_clause here.
-    # The sem_course_id JOIN with portal_courses (filtered to this semester's courses)
-    # is sufficient for semester scoping. A date filter on session_date would exclude
-    # quizzes that exist in the design but haven't been conducted yet, causing the
-    # Designed count to be lower than the institute-level count (which has no date filter).
-    if batch and batch.strip():
-        sa_where.append(batch_sql_filter(batch, "sa.batch_name"))
-    if section:
-        sa_where.append(f"LOWER(TRIM(COALESCE(sa.section_name, ''))) = LOWER('{sql_escape(section)}')")
-
+    # ── Portal WHERE ──────────────────────────────────────────────────────────
     portal_where = [
         f"LOWER(TRIM(COALESCE(p.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
         "TRIM(COALESCE(p.sem_course_title, '')) != ''",
@@ -2496,7 +2514,21 @@ def fetch_course_delivery_stats(batch: str, semester: str, institute: str, secti
     if batch and batch.strip():
         portal_where.append(batch_sql_filter(batch, "p.batch_name"))
 
-    sql = f"""
+    # ── Session adherence WHERE (Designed counts — no date filter) ────────────
+    # NOTE: no get_semester_window_clause here — the sem_course_id JOIN with
+    # portal_courses already scopes to the correct semester. A date filter would
+    # exclude quizzes designed but not yet conducted.
+    sa_where = [
+        f"LOWER(TRIM(COALESCE(sa.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "TRIM(COALESCE(sa.semester_course_id, '')) != ''",
+    ]
+    if batch and batch.strip():
+        sa_where.append(batch_sql_filter(batch, "sa.batch_name"))
+    if section:
+        sa_where.append(f"LOWER(TRIM(COALESCE(sa.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    # ── Part 1: Designed counts from session_adherence ────────────────────────
+    sa_sql = f"""
         WITH portal AS (
           SELECT DISTINCT
             REPLACE(p.sem_course_id, '-', '') AS sem_course_id,
@@ -2507,44 +2539,35 @@ def fetch_course_delivery_stats(batch: str, semester: str, institute: str, secti
         slots AS (
           SELECT
             TRIM(COALESCE(sa.semester_course_id, '')) AS sem_course_id,
-            sa.section_name AS section,
+            sa.section_name                           AS section,
             sa.session_type,
             sa.session_name_enum,
-            MAX(sa.total_sessions_planned)   AS planned,
-            MAX(sa.total_sessions_delivered) AS delivered
+            MAX(sa.total_sessions_planned)            AS planned,
+            MAX(sa.total_sessions_delivered)          AS delivered
           FROM {refs["session_adherence"]} sa
           WHERE {' AND '.join(sa_where)}
           GROUP BY sem_course_id, section, session_type, session_name_enum
         ),
         joined AS (
-          SELECT
-            p.course,
-            p.sem_course_id,
-            s.section,
-            s.session_type,
-            s.session_name_enum,
-            s.planned,
-            s.delivered
+          SELECT p.course, p.sem_course_id, s.section, s.session_type,
+                 s.session_name_enum, s.planned, s.delivered
           FROM portal p
           JOIN slots s ON s.sem_course_id = p.sem_course_id
         ),
         section_stats AS (
           SELECT
-            course,
-            sem_course_id,
-            section,
-            SUM(planned) AS total_planned,
-            COUNT(DISTINCT IF(COALESCE(delivered, 0) > 0, session_name_enum, NULL)) AS total_delivered,
-            COUNT(DISTINCT IF(session_type = 'LECTURE',  session_name_enum, NULL)) AS lecture_slots,
-            COUNT(DISTINCT IF(session_type = 'PRACTICE', session_name_enum, NULL)) AS practice_slots,
+            course, sem_course_id, section,
+            SUM(planned)                                                              AS total_planned,
+            COUNT(DISTINCT IF(COALESCE(delivered, 0) > 0, session_name_enum, NULL))  AS total_delivered,
+            COUNT(DISTINCT IF(session_type = 'LECTURE',  session_name_enum, NULL))   AS lecture_slots,
+            COUNT(DISTINCT IF(session_type = 'PRACTICE', session_name_enum, NULL))   AS practice_slots,
             -- All EXAM sessions = module quizzes (consistent with institute level)
-            COUNT(DISTINCT IF(session_type = 'EXAM', session_name_enum, NULL)) AS exam_slots
+            COUNT(DISTINCT IF(session_type = 'EXAM',     session_name_enum, NULL))   AS exam_slots
           FROM joined
           GROUP BY course, sem_course_id, section
         )
         SELECT
-          course,
-          sem_course_id,
+          course, sem_course_id,
           AVG(total_planned)   AS total_planned,
           AVG(total_delivered) AS total_delivered,
           AVG(lecture_slots)   AS lecture_slots,
@@ -2556,10 +2579,104 @@ def fetch_course_delivery_stats(batch: str, semester: str, institute: str, secti
         ORDER BY course
     """
     try:
-        return run_query(sql)
+        designed_df = run_query(sa_sql)
     except Exception as e:
         st.error(f"fetch_course_delivery_stats error: {e}")
-        return pd.DataFrame(columns=["course", "sem_course_id", "total_planned", "total_delivered", "lecture_slots", "practice_slots", "exam_slots", "adherence_pct"])
+        return _empty
+
+    if designed_df.empty:
+        return _empty
+
+    # ── Part 2: Scheduled counts from schedule table ──────────────────────────
+    # Detect course-title column in schedule table dynamically
+    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
+    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
+    course_col = first_existing_column(
+        sched_cols,
+        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
+    )
+
+    if course_col:
+        schedule_where = [
+            f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+            "UPPER(CAST(s.session_type AS STRING)) IN ('LECTURE', 'PRACTICE', 'EXAM')",
+        ]
+        sched_window = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
+        if sched_window:
+            schedule_where.append(sched_window)
+        if batch and batch.strip():
+            schedule_where.append(batch_sql_filter(batch, "s.batch_name"))
+        if section:
+            schedule_where.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+        sched_sql = f"""
+            WITH portal AS (
+              SELECT DISTINCT
+                REPLACE(p.sem_course_id, '-', '')   AS sem_course_id,
+                LOWER(TRIM(p.sem_course_title))     AS course_key
+              FROM {refs["portal_courses"]} p
+              WHERE {' AND '.join(portal_where)}
+            ),
+            schedule_raw AS (
+              SELECT
+                LOWER(TRIM(COALESCE(CAST(s.{course_col} AS STRING), ''))) AS course_key,
+                COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')      AS section,
+                UPPER(CAST(s.session_type AS STRING))                      AS session_type,
+                s.session_id,
+                UPPER(COALESCE(s.session_status, ''))                      AS session_status
+              FROM {refs["schedule"]} s
+              WHERE {' AND '.join(schedule_where)}
+            ),
+            per_section AS (
+              SELECT
+                p.sem_course_id,
+                sr.section,
+                -- Lecture
+                COUNT(DISTINCT IF(sr.session_type = 'LECTURE'
+                  AND sr.session_status IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+                  sr.session_id, NULL))                                        AS lec_scheduled,
+                -- Practice
+                COUNT(DISTINCT IF(sr.session_type = 'PRACTICE'
+                  AND sr.session_status IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+                  sr.session_id, NULL))                                        AS prac_scheduled,
+                -- Exam / Module Quiz
+                COUNT(DISTINCT IF(sr.session_type = 'EXAM'
+                  AND sr.session_status IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+                  sr.session_id, NULL))                                        AS exam_scheduled
+              FROM portal p
+              JOIN schedule_raw sr ON sr.course_key = p.course_key
+              GROUP BY p.sem_course_id, sr.section
+            )
+            SELECT
+              sem_course_id,
+              ROUND(AVG(lec_scheduled),  1) AS lec_scheduled,
+              ROUND(AVG(prac_scheduled), 1) AS prac_scheduled,
+              ROUND(AVG(exam_scheduled), 1) AS mq_scheduled
+            FROM per_section
+            GROUP BY sem_course_id
+        """
+        try:
+            sched_df = run_query(sched_sql)
+            if not sched_df.empty and "sem_course_id" in sched_df.columns:
+                designed_df = designed_df.merge(
+                    sched_df[["sem_course_id", "lec_scheduled", "prac_scheduled", "mq_scheduled"]],
+                    on="sem_course_id",
+                    how="left",
+                )
+            else:
+                designed_df["lec_scheduled"]  = None
+                designed_df["prac_scheduled"] = None
+                designed_df["mq_scheduled"]   = None
+        except Exception:
+            designed_df["lec_scheduled"]  = None
+            designed_df["prac_scheduled"] = None
+            designed_df["mq_scheduled"]   = None
+    else:
+        designed_df["lec_scheduled"]  = None
+        designed_df["prac_scheduled"] = None
+        designed_df["mq_scheduled"]   = None
+
+    return designed_df
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -8151,9 +8268,11 @@ def main():
             lec_till  = round(_lec  * _pacing_ratio, 1)
             prac_till = round(_prac * _pacing_ratio, 1)
             mq_till   = round(_exam * _pacing_ratio, 1)
-            lec_sched  = round(_lec  * (_safe_f(lecture_pct)  / 100), 1)
-            prac_sched = round(_prac * (_safe_f(practice_pct) / 100), 1)
-            mq_sched   = round(_exam * (_safe_f(exam_pct)     / 100), 1)
+            # Use direct schedule table counts (session_id + session_status).
+            # Fall back to derived Designed × Delivery% only if schedule data is absent.
+            lec_sched  = _safe_f(dr.get("lec_scheduled"))  if dr and dr.get("lec_scheduled")  is not None else round(_lec  * (_safe_f(lecture_pct)  / 100), 1)
+            prac_sched = _safe_f(dr.get("prac_scheduled")) if dr and dr.get("prac_scheduled") is not None else round(_prac * (_safe_f(practice_pct) / 100), 1)
+            mq_sched   = _safe_f(dr.get("mq_scheduled"))   if dr and dr.get("mq_scheduled")   is not None else round(_exam * (_safe_f(exam_pct)     / 100), 1)
 
             course_rows.append({
                 "course":         cname,
