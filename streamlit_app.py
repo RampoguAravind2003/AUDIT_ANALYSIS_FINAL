@@ -2878,7 +2878,7 @@ def fetch_course_session_units_schedule(
             COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')           AS section,
             COUNT(DISTINCT s.session_id)                                    AS total_sessions,
             COUNT(DISTINCT IF(
-              UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+              UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL
             ))                                                               AS delivered_sessions
           FROM {refs["schedule"]} s
@@ -3088,12 +3088,12 @@ def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, sec
         SELECT
           TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
           COUNT(DISTINCT IF(
-            UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+            UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
             s.session_id, NULL)) AS exam_conducted,
           COUNT(DISTINCT s.session_id) AS exam_planned,
           ROUND(SAFE_DIVIDE(
             COUNT(DISTINCT IF(
-              UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+              UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL)),
             NULLIF(COUNT(DISTINCT s.session_id), 0)
           ) * 100, 1) AS exam_conduction_pct
@@ -3154,15 +3154,15 @@ def fetch_course_scheduled_counts(batch: str, semester: str, institute: str, sec
             COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')  AS section,
             COUNT(DISTINCT IF(
               UPPER(CAST(s.session_type AS STRING)) = 'LECTURE'
-              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL))                                  AS lec_scheduled,
             COUNT(DISTINCT IF(
               UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE'
-              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL))                                  AS prac_scheduled,
             COUNT(DISTINCT IF(
               UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'),
+              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL))                                  AS mq_scheduled
           FROM {refs["schedule"]} s
           WHERE {' AND '.join(where_clauses)}
@@ -3299,17 +3299,17 @@ def fetch_session_delivery_metrics(batch: str, semester: str) -> pd.DataFrame:
           SELECT
             s.institute_name AS institute,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'LECTURE'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'), s.session_id, NULL)) AS lecture_delivered,
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS lecture_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'LECTURE', s.session_id, NULL)) AS lecture_planned,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'), s.session_id, NULL)) AS practice_delivered,
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS practice_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE', s.session_id, NULL)) AS practice_planned,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED'), s.session_id, NULL)) AS exam_delivered,
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS exam_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM', s.session_id, NULL)) AS exam_planned,
             -- Module Quiz: EXAM sessions whose name starts with quiz or contains module
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED', 'DELIVERED_DELAYED', 'PARTIALLY_COMPLETED')
+                              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED')
                               AND (LOWER(COALESCE(s.session_name_enum, '')) LIKE 'quiz%'
                                    OR LOWER(COALESCE(s.session_name_enum, '')) LIKE '%module%'),
                               s.session_id, NULL)) AS mq_delivered,
