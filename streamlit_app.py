@@ -8235,7 +8235,7 @@ def main():
         def _deviation(till_date, scheduled):
             # Positive = forward / ahead of schedule (scheduled > till_date)
             # Negative = behind schedule (scheduled < till_date)
-            if till_date and till_date > 0:
+            if till_date and till_date > 0 and scheduled is not None:
                 return round(((scheduled - till_date) / till_date) * 100, 1)
             return None
 
