@@ -2810,9 +2810,10 @@ def fetch_course_session_units_schedule(
 
     refs = get_table_refs()
 
-    # ── Detect course-title column in schedule table ──────────────────────────
+    # ── Detect course-title and status columns in schedule table ─────────────
     sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
     sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
+    status_col = first_existing_column(sched_cols, ["session_status", "session_delivery_status", "delivery_status", "status"]) or "session_status"
     course_col = first_existing_column(
         sched_cols,
         ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
@@ -2878,7 +2879,7 @@ def fetch_course_session_units_schedule(
             COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')           AS section,
             COUNT(DISTINCT s.session_id)                                    AS total_sessions,
             COUNT(DISTINCT IF(
-              UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL
             ))                                                               AS delivered_sessions
           FROM {refs["schedule"]} s
@@ -3066,6 +3067,7 @@ def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, sec
         sched_cols,
         ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
     )
+    status_col = first_existing_column(sched_cols, ["session_status", "session_delivery_status", "delivery_status", "status"]) or "session_status"
     if not course_col:
         return pd.DataFrame(columns=["course_title", "exam_conducted", "exam_planned", "exam_conduction_pct"])
 
@@ -3088,12 +3090,12 @@ def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, sec
         SELECT
           TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
           COUNT(DISTINCT IF(
-            UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+            UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
             s.session_id, NULL)) AS exam_conducted,
           COUNT(DISTINCT s.session_id) AS exam_planned,
           ROUND(SAFE_DIVIDE(
             COUNT(DISTINCT IF(
-              UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL)),
             NULLIF(COUNT(DISTINCT s.session_id), 0)
           ) * 100, 1) AS exam_conduction_pct
@@ -3131,6 +3133,7 @@ def fetch_course_scheduled_counts(batch: str, semester: str, institute: str, sec
         sched_cols,
         ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
     )
+    status_col = first_existing_column(sched_cols, ["session_status", "session_delivery_status", "delivery_status", "status"]) or "session_status"
     if not course_col:
         return _empty
 
@@ -3154,15 +3157,15 @@ def fetch_course_scheduled_counts(batch: str, semester: str, institute: str, sec
             COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')  AS section,
             COUNT(DISTINCT IF(
               UPPER(CAST(s.session_type AS STRING)) = 'LECTURE'
-              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL))                                  AS lec_scheduled,
             COUNT(DISTINCT IF(
               UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE'
-              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL))                                  AS prac_scheduled,
             COUNT(DISTINCT IF(
               UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
               s.session_id, NULL))                                  AS mq_scheduled
           FROM {refs["schedule"]} s
           WHERE {' AND '.join(where_clauses)}
@@ -3280,6 +3283,11 @@ def fetch_session_delivery_metrics(batch: str, semester: str) -> pd.DataFrame:
     then SUM across courses within an institute.
     """
     refs = get_table_refs()
+    # Detect actual session status column name in schedule table
+    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
+    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
+    status_col = first_existing_column(sched_cols, ["session_status", "session_delivery_status", "delivery_status", "status"]) or "session_status"
+
     where_clauses = ["TRIM(COALESCE(sa.institute_name, '')) != ''"]
     window_clause = get_semester_window_clause(semester, batch, "sa.institute_name", "sa.session_date")
     if window_clause:
@@ -3299,17 +3307,17 @@ def fetch_session_delivery_metrics(batch: str, semester: str) -> pd.DataFrame:
           SELECT
             s.institute_name AS institute,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'LECTURE'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS lecture_delivered,
+                              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS lecture_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'LECTURE', s.session_id, NULL)) AS lecture_planned,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS practice_delivered,
+                              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS practice_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE', s.session_id, NULL)) AS practice_planned,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS exam_delivered,
+                              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS exam_delivered,
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM', s.session_id, NULL)) AS exam_planned,
             -- Module Quiz: EXAM sessions whose name starts with quiz or contains module
             COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.session_status, '')) IN ('ON_TIME', 'DELIVERED_DELAYED')
+                              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED')
                               AND (LOWER(COALESCE(s.session_name_enum, '')) LIKE 'quiz%'
                                    OR LOWER(COALESCE(s.session_name_enum, '')) LIKE '%module%'),
                               s.session_id, NULL)) AS mq_delivered,
