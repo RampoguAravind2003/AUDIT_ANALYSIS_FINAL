@@ -2748,6 +2748,174 @@ def fetch_course_session_units(batch: str, semester: str, institute: str, course
         return pd.DataFrame(columns=["unit", "session_type", "section", "total_sessions", "delivered_sessions", "completion_pct", "total_students", "students_completed"])
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_course_session_units_schedule(
+    batch: str,
+    semester: str,
+    institute: str,
+    course_title,
+    section: str = "",
+    sem_course_id: str = "",
+) -> pd.DataFrame:
+    """
+    Fetches per-unit delivery data for the LPE tab from the SCHEDULE table.
+
+    Path: institute_name → subject (course_title / sem_course_id) → session_id
+          session_id carries session_type (LECTURE / PRACTICE / EXAM) and
+          session_status (COMPLETED / DELIVERED / CONDUCTED).
+
+    This avoids the session_adherence name-filter problem where EXAM sessions
+    whose session_name_enum doesn't match 'quiz%' or '%module%' are silently
+    dropped.
+
+    Planned  = COUNT(DISTINCT session_id)
+    Delivered = COUNT(DISTINCT session_id WHERE status IN completed statuses)
+
+    Also enriches PRACTICE units with student completion from unlocked_units
+    (same as fetch_course_session_units).
+
+    Returns columns: unit, session_type, section, total_sessions,
+                     delivered_sessions, completion_pct,
+                     total_students, students_completed
+    """
+    if isinstance(course_title, str):
+        course_title = (course_title,)
+
+    refs = get_table_refs()
+
+    # ── Detect course-title column in schedule table ──────────────────────────
+    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
+    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
+    course_col = first_existing_column(
+        sched_cols,
+        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
+    )
+    if not course_col:
+        # schedule table has no recognisable course column — fall back gracefully
+        return pd.DataFrame(columns=["unit", "session_type", "section", "total_sessions",
+                                     "delivered_sessions", "completion_pct",
+                                     "total_students", "students_completed"])
+
+    # ── Schedule WHERE clauses ────────────────────────────────────────────────
+    sched_where = [
+        f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "TRIM(COALESCE(s.session_name_enum, '')) != ''",
+        "UPPER(CAST(s.session_type AS STRING)) IN ('LECTURE', 'PRACTICE', 'EXAM')",
+    ]
+
+    # Course filter: prefer sem_course_id join through portal_courses for exact match
+    if sem_course_id:
+        clean_id = sem_course_id.replace("-", "")
+        # Join portal_courses to get the canonical course title, then match schedule
+        sched_where.append(
+            f"LOWER(TRIM(COALESCE(CAST(s.{course_col} AS STRING), ''))) IN ("
+            f"  SELECT LOWER(TRIM(COALESCE(p.sem_course_title, ''))) "
+            f"  FROM {refs['portal_courses']} p "
+            f"  WHERE REPLACE(p.sem_course_id, '-', '') = '{sql_escape(clean_id)}'"
+            f")"
+        )
+    else:
+        titles_in = ", ".join(f"LOWER('{sql_escape(t)}')" for t in course_title)
+        sched_where.append(
+            f"LOWER(TRIM(COALESCE(CAST(s.{course_col} AS STRING), ''))) IN ({titles_in})"
+        )
+
+    sched_window = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
+    if sched_window:
+        sched_where.append(sched_window)
+    if batch and batch.strip():
+        sched_where.append(batch_sql_filter(batch, "s.batch_name"))
+    if section:
+        sched_where.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    # ── unlocked_units WHERE (PRACTICE student completion) ────────────────────
+    titles_in_uu = ", ".join(f"LOWER('{sql_escape(t)}')" for t in course_title)
+    uu_where = [
+        f"LOWER(TRIM(COALESCE(uu.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+    ]
+    uu_window = get_semester_window_clause(semester, batch, "uu.institute_name", "uu.session_date")
+    if uu_window:
+        uu_where.append(uu_window)
+    if batch and batch.strip():
+        uu_where.append(batch_sql_filter(batch, "uu.batch_name"))
+    if section:
+        uu_where.append(f"LOWER(TRIM(COALESCE(uu.section_name, ''))) = LOWER('{sql_escape(section)}')")
+
+    sql = f"""
+        WITH
+        -- ── Schedule-based unit delivery (all types via session_id) ──────────
+        schedule_units AS (
+          SELECT
+            TRIM(s.session_name_enum)                                       AS unit,
+            UPPER(CAST(s.session_type AS STRING))                           AS session_type,
+            COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')           AS section,
+            COUNT(DISTINCT s.session_id)                                    AS total_sessions,
+            COUNT(DISTINCT IF(
+              UPPER(COALESCE(s.session_status, '')) IN ('COMPLETED', 'DELIVERED', 'CONDUCTED'),
+              s.session_id, NULL
+            ))                                                               AS delivered_sessions
+          FROM {refs["schedule"]} s
+          WHERE {' AND '.join(sched_where)}
+          GROUP BY unit, session_type, section
+        ),
+        -- ── Student roster ────────────────────────────────────────────────────
+        roster AS (
+          SELECT
+            u.institute_name,
+            COALESCE(NULLIF(TRIM(u.section_name), ''), 'Unknown') AS section,
+            COUNT(DISTINCT u.user_id) AS total_students
+          FROM {refs["users"]} u
+          WHERE TRIM(COALESCE(u.institute_name, '')) != ''
+          GROUP BY u.institute_name, section
+        ),
+        -- ── PRACTICE student completion from unlocked_units ───────────────────
+        content AS (
+          {build_content_subquery(refs["content"])}
+        ),
+        practice_completion AS (
+          SELECT
+            COALESCE(NULLIF(TRIM(uu.section_name), ''), 'Unknown') AS section,
+            MAX(r.total_students)                                   AS total_students,
+            COUNT(DISTINCT CASE WHEN uu.unit_completion_status = 'COMPLETED'
+                                THEN uu.user_id END)               AS students_completed
+          FROM {refs["unlocked_units"]} uu
+          INNER JOIN content c ON uu.unit_id = c.unit_id
+          LEFT JOIN roster r
+            ON r.institute_name = uu.institute_name
+           AND r.section = COALESCE(NULLIF(TRIM(uu.section_name), ''), 'Unknown')
+          WHERE {' AND '.join(uu_where)}
+            AND LOWER(TRIM(COALESCE(c.course_title, ''))) IN ({titles_in_uu})
+          GROUP BY section
+        )
+        -- ── Final join ────────────────────────────────────────────────────────
+        SELECT
+          su.unit,
+          su.session_type,
+          su.section,
+          su.total_sessions,
+          su.delivered_sessions,
+          ROUND(LEAST(SAFE_DIVIDE(su.delivered_sessions,
+                NULLIF(su.total_sessions, 0)) * 100, 100.0), 1)  AS completion_pct,
+          r.total_students,
+          CASE WHEN su.session_type = 'PRACTICE'
+               THEN pc.students_completed ELSE NULL END            AS students_completed
+        FROM schedule_units su
+        LEFT JOIN roster r
+          ON LOWER(TRIM(r.institute_name)) = LOWER('{sql_escape(institute)}')
+         AND r.section = su.section
+        LEFT JOIN practice_completion pc
+          ON pc.section = su.section
+        ORDER BY su.session_type, su.unit
+    """
+    try:
+        return run_query(sql)
+    except Exception as e:
+        st.error(f"fetch_course_session_units_schedule error: {e}")
+        return pd.DataFrame(columns=["unit", "session_type", "section", "total_sessions",
+                                     "delivered_sessions", "completion_pct",
+                                     "total_students", "students_completed"])
+
+
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
@@ -8196,9 +8364,16 @@ def main():
                 render_tab_schedule_adherence(weekly_df)
 
             with tab2:
-                units_df = _detail_units_df
+                with st.spinner("Loading unit data…"):
+                    _lpe_units_df = fetch_course_session_units_schedule(
+                        batch, semester, selected_university,
+                        raw_course_titles, selected_section, _drill_sem_course_id
+                    )
+                    # Fall back to session_adherence source if schedule returned nothing
+                    if _lpe_units_df.empty:
+                        _lpe_units_df = _detail_units_df
                 sec_list = sorted(sem_course_df["section"].unique().tolist()) if not sem_course_df.empty else []
-                render_tab_lecture_practice_exam(units_df, sec_list)
+                render_tab_lecture_practice_exam(_lpe_units_df, sec_list)
 
             with tab3:
                 _sel_norm = normalize_text(selected_course_for_detail)
