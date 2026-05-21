@@ -3658,7 +3658,7 @@ def fetch_skill_assessment_detail(batch: str, semester: str, institute: str, sec
 
     users_batch_filter = ""
     if batch and batch.strip():
-        users_batch_filter = f"AND {batch_sql_filter(batch, 'u.batch_name')}"
+        users_batch_filter = f"AND {batch_sql_filter(batch, 'batch_name')}"
 
     sql = f"""
         WITH users AS (
