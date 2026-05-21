@@ -164,6 +164,51 @@ PLANNED_CONTENT_SLOTS_OVERRIDES = {
     },
 }
 
+# Hardcoded academic assessment metrics (attendance % and pass %) per semester.
+# Values are applied as overrides on top of BigQuery results.
+# None = data pending / results not released (shown as "—" in the UI).
+ACADEMIC_METRICS_OVERRIDES = {
+    "Semester 1": {
+        "A Dy Patil University":             {"academic_attempt_pct": 100.0, "academic_pass_pct": 64.6},
+        "A Dy Patil":                        {"academic_attempt_pct": 100.0, "academic_pass_pct": 64.6},
+        "Academy of Maritime education & Technology": {"academic_attempt_pct": 100.0, "academic_pass_pct": 90.7},
+        "AMET":                              {"academic_attempt_pct": 100.0, "academic_pass_pct": 90.7},
+        "Annamacharya University":           {"academic_attempt_pct": 100.0, "academic_pass_pct": 90.8},
+        "Annamacharya":                      {"academic_attempt_pct": 100.0, "academic_pass_pct": 90.8},
+        "Chaitanya Deemed-to-be University": {"academic_attempt_pct": None,  "academic_pass_pct": None},
+        "CDU":                               {"academic_attempt_pct": None,  "academic_pass_pct": None},
+        "Chalapathy (CITY)":                 {"academic_attempt_pct": 100.0, "academic_pass_pct": 69.7},
+        "Chalapathy":                        {"academic_attempt_pct": 100.0, "academic_pass_pct": 69.7},
+        "Chalapathi":                        {"academic_attempt_pct": 100.0, "academic_pass_pct": 69.7},
+        "Crescent University":               {"academic_attempt_pct": None,  "academic_pass_pct": 72.3},
+        "Crescent":                          {"academic_attempt_pct": None,  "academic_pass_pct": 72.3},
+        "Malla Reddy Vishwavidyapeeth":      {"academic_attempt_pct": None,  "academic_pass_pct": None},
+        "MRV University":                    {"academic_attempt_pct": None,  "academic_pass_pct": None},
+        "MRV":                               {"academic_attempt_pct": None,  "academic_pass_pct": None},
+        "NRI Institute of Technology":       {"academic_attempt_pct": 100.0, "academic_pass_pct": 96.6},
+        "NRI":                               {"academic_attempt_pct": 100.0, "academic_pass_pct": 96.6},
+        "NSRIT University":                  {"academic_attempt_pct": 100.0, "academic_pass_pct": 71.3},
+        "NSRIT":                             {"academic_attempt_pct": 100.0, "academic_pass_pct": 71.3},
+        "Noida International University":    {"academic_attempt_pct": 100.0, "academic_pass_pct": 100.0},
+        "Noida International":               {"academic_attempt_pct": 100.0, "academic_pass_pct": 100.0},
+        "NIU":                               {"academic_attempt_pct": 100.0, "academic_pass_pct": 100.0},
+        "S-VYASA":                           {"academic_attempt_pct": None,  "academic_pass_pct": None},
+        "S-Vyasa":                           {"academic_attempt_pct": None,  "academic_pass_pct": None},
+        "Sanjay Ghodawat University":        {"academic_attempt_pct": 98.3,  "academic_pass_pct": 80.3},
+        "Sanjay Godhawat University":        {"academic_attempt_pct": 98.3,  "academic_pass_pct": 80.3},
+        "SGU":                               {"academic_attempt_pct": 98.3,  "academic_pass_pct": 80.3},
+        "Takshashila University":            {"academic_attempt_pct": 100.0, "academic_pass_pct": 80.7},
+        "Takshasila University":             {"academic_attempt_pct": 100.0, "academic_pass_pct": 80.7},
+        "Takshashila":                       {"academic_attempt_pct": 100.0, "academic_pass_pct": 80.7},
+        "Vivekananda global University":     {"academic_attempt_pct": 100.0, "academic_pass_pct": 95.4},
+        "VGU":                               {"academic_attempt_pct": 100.0, "academic_pass_pct": 95.4},
+        "Yenepoya University":               {"academic_attempt_pct": 100.0, "academic_pass_pct": 91.9},
+        "Yenapoya University":               {"academic_attempt_pct": 100.0, "academic_pass_pct": 91.9},
+        "Yenepoya":                          {"academic_attempt_pct": 100.0, "academic_pass_pct": 91.9},
+        "NIAT Chevella":                     {"academic_attempt_pct": None,  "academic_pass_pct": None},
+    },
+}
+
 SEMESTER_DATES_BY_SEMESTER = {
     "Semester 1": {
         "A Dy Patil University":                    {"start": "Aug 4, 2025",  "end": "Dec 15, 2025"},
@@ -3625,10 +3670,42 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
         ORDER BY institutes.institute
     """
     try:
-        return run_query(sql)
+        df = run_query(sql)
     except Exception as e:
         st.error(f"fetch_skill_graded_metrics error: {e}")
         return _empty
+
+    # ── Apply hardcoded academic metric overrides (if defined for this semester) ─
+    academic_overrides = ACADEMIC_METRICS_OVERRIDES.get(semester)
+    if academic_overrides:
+        if df.empty:
+            # Build rows from overrides alone so institutes with no BQ data still appear
+            rows = []
+            seen = set()
+            for inst_key, vals in academic_overrides.items():
+                if inst_key in seen:
+                    continue
+                rows.append({
+                    "institute": inst_key,
+                    "skill_conducted": None,
+                    "skill_participation_pct": None,
+                    "skill_pass_pct": None,
+                    "academic_attempt_pct": vals["academic_attempt_pct"],
+                    "academic_pass_pct": vals["academic_pass_pct"],
+                })
+                seen.add(inst_key)
+            df = pd.DataFrame(rows)
+        else:
+            for col in ["academic_attempt_pct", "academic_pass_pct"]:
+                if col not in df.columns:
+                    df[col] = None
+            for idx, row in df.iterrows():
+                inst = str(row.get("institute", "")).strip()
+                if inst in academic_overrides:
+                    df.at[idx, "academic_attempt_pct"] = academic_overrides[inst]["academic_attempt_pct"]
+                    df.at[idx, "academic_pass_pct"]    = academic_overrides[inst]["academic_pass_pct"]
+
+    return df
 
 
 @st.cache_data(ttl=600, show_spinner=False)
