@@ -2687,9 +2687,9 @@ def fetch_course_session_units(batch: str, semester: str, institute: str, course
         sa_where.append(f"TRIM(COALESCE(sa.semester_course_id, '')) = '{sql_escape(clean_id)}'")
     else:
         sa_where.append(f"LOWER(TRIM(COALESCE(sa.course_title, ''))) IN ({titles_in})")
-    sa_window = get_semester_window_clause(semester, batch, "sa.institute_name", "sa.session_date")
-    if sa_window:
-        sa_where.append(sa_window)
+    # NOTE: no date filter here — semester_course_id already scopes to the correct semester.
+    # A date filter would exclude planned-but-undelivered sessions whose session_date is
+    # outside the window, causing the LPE count to disagree with the course overview.
     if batch and batch.strip():
         sa_where.append(batch_sql_filter(batch, "sa.batch_name"))
     if section:
@@ -2711,11 +2711,14 @@ def fetch_course_session_units(batch: str, semester: str, institute: str, course
         -- â€â€ Session delivery (all unit types) from session_adherence â€â€â€â€â€â€â€â€â€â€
         session_units AS (
           SELECT
-            sa.session_name_enum                                      AS unit,
+            sa.session_name_enum                                                              AS unit,
             sa.session_type,
-            COALESCE(NULLIF(TRIM(sa.section_name), ''), 'Unknown')   AS section,
-            MAX(sa.total_sessions_planned)                            AS total_sessions,
-            MAX(sa.total_sessions_delivered)                          AS delivered_sessions
+            COALESCE(NULLIF(TRIM(sa.section_name), ''), 'Unknown')                           AS section,
+            COUNT(DISTINCT sa.session_id)                                                     AS total_sessions,
+            COUNT(DISTINCT IF(
+              UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              sa.session_id, NULL
+            ))                                                                                AS delivered_sessions
           FROM {refs["session_adherence"]} sa
           WHERE {' AND '.join(sa_where)}
           GROUP BY unit, session_type, section
@@ -8468,16 +8471,8 @@ def main():
                 render_tab_schedule_adherence(weekly_df)
 
             with tab2:
-                with st.spinner("Loading unit data…"):
-                    _lpe_units_df = fetch_course_session_units_schedule(
-                        batch, semester, selected_university,
-                        raw_course_titles, selected_section, _drill_sem_course_id
-                    )
-                    # Fall back to session_adherence source if schedule returned nothing
-                    if _lpe_units_df.empty:
-                        _lpe_units_df = _detail_units_df
                 sec_list = sorted(sem_course_df["section"].unique().tolist()) if not sem_course_df.empty else []
-                render_tab_lecture_practice_exam(_lpe_units_df, sec_list)
+                render_tab_lecture_practice_exam(_detail_units_df, sec_list)
 
             with tab3:
                 _sel_norm = normalize_text(selected_course_for_detail)
