@@ -1572,8 +1572,9 @@ def build_university_overview_rows(
 
     # â€â€ Rename and filter â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€â€
     overview_df = overview_df.rename(columns={"University": "Universities"})
+    _exclude = {"aurora university"}
     overview_df = overview_df[
-        overview_df["Universities"].astype(str).str.strip().str.casefold() != "aurora university"
+        ~overview_df["Universities"].astype(str).str.strip().str.casefold().isin(_exclude)
     ].reset_index(drop=True)
 
     return overview_df[
@@ -5013,7 +5014,7 @@ def render_institute_overview_table(
 
     # ── Group header row (Subject Info = 5 cols; rest identical to course table) ──
     grp_row = (
-        _grp_th("Institute Info", 5, 1)
+        _grp_th("University Info", 5, 1)
         + _grp_th("Lectures", 4, 2)
         + _grp_th("Classroom Quiz", 3, 3)
         + _grp_th("Practice", 4, 4)
@@ -5024,7 +5025,7 @@ def render_institute_overview_table(
     )
 
     col_row = (
-        _col_th("Institute", 1) + _col_th("Mode", 1) + _col_th("Start Date", 1)
+        _col_th("University", 1) + _col_th("Mode", 1) + _col_th("Start Date", 1)
         + _col_th("End Date", 1) + _col_th("Total Designed", 1)
         + _col_th("Designed", 2) + _col_th("Designed Till Date", 2)
         + _col_th("Scheduled", 2) + _col_th("Deviation %", 2)
@@ -5211,7 +5212,7 @@ def render_all_institutes_html_table(
         )
 
     grp_row = (
-        _grp_th("Institute Info", 5, 1)
+        _grp_th("University Info", 5, 1)
         + _grp_th("Lectures", 4, 2)
         + _grp_th("Classroom Quiz", 3, 3)
         + _grp_th("Practice", 4, 4)
@@ -5222,7 +5223,7 @@ def render_all_institutes_html_table(
     )
 
     col_row = (
-        _col_th("Institute", 1) + _col_th("Mode", 1) + _col_th("Start Date", 1)
+        _col_th("University", 1) + _col_th("Mode", 1) + _col_th("Start Date", 1)
         + _col_th("End Date", 1) + _col_th("Total Designed", 1)
         + _col_th("Designed", 2) + _col_th("Designed Till Date", 2)
         + _col_th("Scheduled", 2) + _col_th("Deviation %", 2)
