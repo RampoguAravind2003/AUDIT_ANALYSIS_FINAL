@@ -3625,19 +3625,26 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
     roster_where_sql = ' AND '.join(roster_where)
 
     sql = f"""
-        WITH institute_roster AS (
-          -- Only count students from the same batch so the denominator is correct
+        WITH
+        -- ── Users scoped to batch (institute name is the canonical key) ──────────
+        users_scoped AS (
           SELECT
-            LOWER(TRIM(u.institute_name)) AS institute,
-            COUNT(DISTINCT u.user_id)     AS total_students
+            CAST(u.user_id AS STRING)              AS user_id,
+            LOWER(TRIM(u.institute_name))          AS institute
           FROM {refs["users"]} u
           WHERE {roster_where_sql}
-          GROUP BY LOWER(TRIM(u.institute_name))
         ),
+        -- ── Full enrolled roster per institute (denominator) ─────────────────────
+        institute_roster AS (
+          SELECT institute, COUNT(DISTINCT user_id) AS total_students
+          FROM users_scoped
+          GROUP BY institute
+        ),
+        -- ── Skill assessments joined to users on user_id ──────────────────────────
+        -- Institute name always comes from users table so roster join is exact.
         sg_skill AS (
           SELECT
-            -- Map skill-table institute name to the canonical users-table institute name
-            {_inst_expr}                                                                               AS institute,
+            u.institute                                                                                AS institute,
             COUNT(DISTINCT {date_col})                                                                 AS skill_conducted,
             COUNT(DISTINCT sg.user_id)                                                                 AS skill_students_attempted,
             COUNT(DISTINCT IF(sg.{score_col} >= 0.80, sg.user_id, NULL))                              AS skill_students_passed,
@@ -3645,22 +3652,25 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
                                                                                                        AS skill_pairs_attempted,
             COUNT(DISTINCT sg.{asmt_id_col})                                                           AS skill_assessment_count
           FROM {skill_table} sg
+          JOIN users_scoped u ON CAST(sg.user_id AS STRING) = u.user_id
           WHERE {base_where_sql}
             AND UPPER(TRIM(CAST(sg.{asmt_type_col} AS STRING))) = 'SKILL_ASSESSMENT'
-          GROUP BY {_inst_expr}
+          GROUP BY u.institute
         ),
+        -- ── Graded assessments joined to users on user_id ─────────────────────────
         sg_graded AS (
           SELECT
-            {_inst_expr}                                                                               AS institute,
+            u.institute                                                                                AS institute,
             COUNT(DISTINCT sg.user_id)                                                                 AS graded_students_attempted,
             COUNT(DISTINCT IF(sg.{score_col} >= 0.80, sg.user_id, NULL))                              AS graded_students_passed,
             COUNT(DISTINCT CONCAT(CAST(sg.user_id AS STRING), '||', CAST(sg.{asmt_id_col} AS STRING)))
                                                                                                        AS graded_pairs_attempted,
             COUNT(DISTINCT sg.{asmt_id_col})                                                           AS graded_assessment_count
           FROM {skill_table} sg
+          JOIN users_scoped u ON CAST(sg.user_id AS STRING) = u.user_id
           WHERE {base_where_sql}
             AND UPPER(TRIM(CAST(sg.{asmt_type_col} AS STRING))) = 'GRADED_ASSESSMENT'
-          GROUP BY {_inst_expr}
+          GROUP BY u.institute
         )
         SELECT
           COALESCE(sk.institute, gr.institute) AS institute,
@@ -3688,9 +3698,9 @@ def fetch_skill_graded_metrics(batch: str, semester: str) -> pd.DataFrame:
           UNION DISTINCT
           SELECT institute FROM sg_graded
         ) institutes
-        LEFT JOIN sg_skill  sk ON sk.institute = institutes.institute
-        LEFT JOIN sg_graded gr ON gr.institute = institutes.institute
-        LEFT JOIN institute_roster ir ON ir.institute = institutes.institute
+        LEFT JOIN sg_skill          sk ON sk.institute = institutes.institute
+        LEFT JOIN sg_graded         gr ON gr.institute = institutes.institute
+        LEFT JOIN institute_roster  ir ON ir.institute = institutes.institute
         ORDER BY institutes.institute
     """
     try:
