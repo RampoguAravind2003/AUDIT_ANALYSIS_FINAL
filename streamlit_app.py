@@ -7577,7 +7577,6 @@ def main():
     top_metrics.extend(
         [
             {"label": "Avg Scheduled %", "value": format_metric_value(avg_delivery, suffix="%"), "help": "Average university scheduled % across lecture, practice, and module quiz completion."},
-            {"label": "Avg Performance %", "value": format_metric_value(avg_score, suffix="%"), "help": "Average assessment performance % across all universities with assessment data (mean of per-university avg score %)."},
             {"label": "Skill Performance %", "value": format_metric_value(avg_skill_score, suffix="%"), "help": "Average skill assessment performance % across all universities with skill assessment data (mean of per-university avg skill score %)."},
             {"label": "Academic Assessment Performance %", "value": format_metric_value(avg_graded_score, suffix="%"), "help": "Average academic assessment performance % across all universities with academic assessment data (mean of per-university avg graded score %)."},
         ]
