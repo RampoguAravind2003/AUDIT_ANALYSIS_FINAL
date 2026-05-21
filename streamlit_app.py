@@ -925,7 +925,7 @@ def batch_sql_filter(batch: str, col_expr: str) -> str:
     batch_num = get_niat_batch_number(batch)
     if batch_num is not None:
         conditions.append(
-            f"REGEXP_CONTAINS(LOWER(TRIM(CAST({col_expr} AS STRING))), r'batch[-_ ]?{batch_num}\\b')"
+            f"REGEXP_CONTAINS(LOWER(TRIM(CAST({col_expr} AS STRING))), r'batch[-_ ]*{batch_num}\\b')"
         )
     return f"({' OR '.join(conditions)})"
 
