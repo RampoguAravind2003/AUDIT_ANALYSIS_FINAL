@@ -1460,6 +1460,32 @@ def build_university_overview_rows(
             return None
         return round(min((numerator / denominator) * 100, 999.9), 1)
 
+    def _academic_override_row(inst: str, sem: str) -> dict:
+        """Return academic metric dict using hardcoded overrides (primary) or BQ fallback."""
+        overrides = ACADEMIC_METRICS_OVERRIDES.get(sem, {})
+        # Exact match first, then case-insensitive partial match
+        ov = overrides.get(inst)
+        if ov is None:
+            inst_lower = inst.strip().lower()
+            for k, v in overrides.items():
+                if k.strip().lower() in inst_lower or inst_lower in k.strip().lower():
+                    ov = v
+                    break
+        if ov is not None:
+            # Hardcoded data exists (values may be None = data pending)
+            return {
+                "Academic Assessments Attempt %": ov["academic_attempt_pct"],
+                "Academic Assessments Pass %":    ov["academic_pass_pct"],
+            }
+        # No hardcoded override — fall back to BQ sources
+        return {
+            "Academic Assessments Attempt %": round(v, 1) if (v := _get(skill_graded_data, inst, "academic_attempt_pct")) is not None else None,
+            "Academic Assessments Pass %": (
+                _assessment_pass_pct(inst, "Graded Assessment")
+                or (round(v, 1) if (v := _get(skill_graded_data, inst, "academic_pass_pct")) is not None else None)
+            ),
+        }
+
     metric_rows = []
     for item in sorted(universities, key=lambda v: v["name"]):
         name = item["name"]
@@ -1517,12 +1543,9 @@ def build_university_overview_rows(
                 or (round(v, 1) if (v := _get(skill_graded_data, name, "skill_pass_pct")) is not None else None)
             ),
             # ── Academic Assessments ──────────────────────────────────────────
-            "Academic Assessments Attempt %": round(v, 1) if (v := _get(skill_graded_data, name, "academic_attempt_pct")) is not None else None,
-            # Academic pass %: same pattern — assessment_df first, then skill_graded fallback.
-            "Academic Assessments Pass %": (
-                _assessment_pass_pct(name, "Graded Assessment")
-                or (round(v, 1) if (v := _get(skill_graded_data, name, "academic_pass_pct")) is not None else None)
-            ),
+            # Hardcoded overrides take priority. Look up by exact name first,
+            # then by case-insensitive partial match (same aliases as PLANNED_CONTENT_SLOTS_OVERRIDES).
+            **(_academic_override_row(name, semester)),
         })
 
     if not metric_rows:
