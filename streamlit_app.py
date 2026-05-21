@@ -7609,28 +7609,28 @@ def main():
                 # Lectures
                 ("Lectures - Designed",                     "Total lecture sessions planned for the full semester."),
                 ("Lectures - Designed Till Date",           "Pro-rated lecture sessions expected by today based on semester pacing (Designed × elapsed days / total days)."),
-                ("Lectures - Scheduled",                    "Lecture sessions actually delivered / scheduled so far (Designed × Lecture Delivery %)."),
+                ("Lectures - Scheduled",                    "COUNT of distinct lecture session IDs where delivery_status_vs_plan = 'ON_TIME' or 'DELIVERED_DELAYED' (source: session_adherence table), averaged across sections."),
                 ("Lectures - Deviation %",                  "Positive = ahead of schedule. Negative = behind schedule. Formula: (Scheduled − Designed Till Date) / Designed Till Date × 100."),
                 # Classroom Quiz
                 ("Classroom Quiz - Attend %",               "% of enrolled students who attempted classroom (LP_QUIZ) quizzes."),
                 # Practice
                 ("Practice - Designed",                     "Total practice sessions planned for the full semester."),
                 ("Practice - Designed Till Date",           "Pro-rated practice sessions expected by today based on semester pacing."),
-                ("Practice - Scheduled",                    "Practice sessions actually delivered so far (Designed × Practice Delivery %)."),
+                ("Practice - Scheduled",                    "COUNT of distinct practice session IDs where delivery_status_vs_plan = 'ON_TIME' or 'DELIVERED_DELAYED' (source: session_adherence table), averaged across sections."),
                 ("Practice - Deviation %",                  "Positive = ahead of schedule. Negative = behind schedule."),
                 # Practice Completion
                 ("Practice Completion %",                   "% of assigned practice content units completed by students."),
                 # Module Quiz
                 ("Module Quiz - Designed",                  "Total module quiz (EXAM-type) sessions planned for the full semester."),
                 ("Module Quiz - Designed Till Date",        "Pro-rated module quizzes expected by today based on semester pacing."),
-                ("Module Quiz - Scheduled",                 "Module quiz sessions actually conducted (Designed × Module Quiz Conduction %)."),
+                ("Module Quiz - Scheduled",                 "COUNT of distinct EXAM session IDs where delivery_status_vs_plan = 'ON_TIME' or 'DELIVERED_DELAYED' (source: session_adherence table), averaged across sections."),
                 ("Module Quiz - Deviation %",               "Positive = ahead of schedule. Negative = behind schedule."),
                 ("Module Quiz - Attend %",                  "% of enrolled students who participated in module quizzes."),
                 ("Module Quiz - Pass %",                    "% of module quiz participants who passed (score ≥ 80%)."),
                 # Skill Assessment
                 ("Skill - Designed",                        "Number of skill assessments planned per semester (fixed at 5)."),
                 ("Skill - Designed Till Date",              "Pro-rated skill assessments expected by today (5 × pacing ratio)."),
-                ("Skill - Scheduled",                       "Skill assessment sessions actually conducted so far."),
+                ("Skill - Scheduled",                       "COUNT of distinct EXAM session IDs whose session_name_enum contains 'skill' and delivery_status_vs_plan = 'ON_TIME' or 'DELIVERED_DELAYED' (source: session_adherence table)."),
                 ("Skill - Attend %",                        "% of enrolled students who participated in skill assessments."),
                 ("Skill - Pass %",                          "% of skill assessment participants who passed (score ≥ 80%)."),
                 # Academic
@@ -7725,15 +7725,15 @@ def main():
                     "Class Room Quizzes Pass %":             st.column_config.NumberColumn("CR Quiz Pass %", format="%.1f%%", help="Pairs where best_attempt_evaluation_result = 'PASS' / total attempted pairs Ã— 100"),
                     "CR Quiz Pass % (â‰¥60)":                  st.column_config.NumberColumn("CR Quiz Pass % (â‰¥60)", format="%.1f%%", help="Classroom quiz pairs with score â‰¥ 60% / total attempted pairs Ã— 100"),
                     "CR Quiz Pass % (>80)":                  st.column_config.NumberColumn("CR Quiz Pass % (>80)", format="%.1f%%", help="Classroom quiz pairs with score > 80% / total attempted pairs Ã— 100"),
-                    "Lecture Delivery %":                    st.column_config.NumberColumn("Lecture Delivery %", format="%.1f%%", help="Delivered lecture sessions / planned lecture sessions Ã— 100"),
-                    "Practice Delivery %":                   st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%", help="Practice units delivered / planned practice sessions Ã— 100"),
-                    "Practice Completion %":                 st.column_config.NumberColumn("Practice Completion %", format="%.1f%%", help="Completed studentÃ—practice sessions / available studentÃ—practice sessions Ã— 100"),
-                    "Module Quiz Conduction %":              st.column_config.NumberColumn("Module Quiz Conduction %", format="%.1f%%", help="Module quizzes conducted / planned module quizzes Ã— 100"),
+                    "Lecture Delivery %":                    st.column_config.NumberColumn("Lecture Delivery %", format="%.1f%%", help="COUNT DISTINCT lecture session_ids with delivery_status_vs_plan IN ('ON_TIME','DELIVERED_DELAYED') / COUNT DISTINCT planned lecture session_ids x 100  (source: session_adherence)"),
+                    "Practice Delivery %":                   st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%", help="COUNT DISTINCT practice session_ids with delivery_status_vs_plan IN ('ON_TIME','DELIVERED_DELAYED') / COUNT DISTINCT planned practice session_ids x 100  (source: session_adherence)"),
+                    "Practice Completion %":                 st.column_config.NumberColumn("Practice Completion %", format="%.1f%%", help="Completed student x practice sessions / available student x practice sessions x 100"),
+                    "Module Quiz Conduction %":              st.column_config.NumberColumn("Module Quiz Conduction %", format="%.1f%%", help="COUNT DISTINCT EXAM session_ids (session_name_enum LIKE 'quiz%' or '%module%') with delivery_status_vs_plan IN ('ON_TIME','DELIVERED_DELAYED') / planned x 100  (source: session_adherence)"),
                     "Module Quiz Student Participation %":   st.column_config.NumberColumn("Module Quiz Participation %", format="%.1f%%", help="Students who attempted module quiz / total enrolled Ã— 100"),
                     "Module Quiz Pass %":                    st.column_config.NumberColumn("Module Quiz Pass %", format="%.1f%%", help="Pairs where best_attempt_evaluation_result = 'PASS' / total attempted pairs Ã— 100"),
                     "Module Quiz Pass % (â‰¥60)":              st.column_config.NumberColumn("Module Quiz Pass % (â‰¥60)", format="%.1f%%", help="Module quiz pairs with score â‰¥ 60% / total attempted pairs Ã— 100"),
                     "Module Quiz Pass % (>80)":              st.column_config.NumberColumn("Module Quiz Pass % (>80)", format="%.1f%%", help="Module quiz pairs with score > 80% / total attempted pairs Ã— 100"),
-                    "Skill Assessment Conduction %":         st.column_config.NumberColumn("Skill Conduction %", format="%.1f%%", help="COUNT DISTINCT assessment dates from skill_graded table / 5 Ã— 100  (5 = total expected skill assessment dates)"),
+                    "Skill Assessment Conduction %":         st.column_config.NumberColumn("Skill Conduction %", format="%.1f%%", help="COUNT DISTINCT EXAM session_ids (session_name_enum contains 'skill') with delivery_status_vs_plan IN ('ON_TIME','DELIVERED_DELAYED') / planned x 100  (source: session_adherence)"),
                     "Skill Assessment Student Participation %": st.column_config.NumberColumn("Skill Participation %", format="%.1f%%", help="Students attempted skill assessment / total enrolled Ã— 100"),
                     "Skill Assessment Pass %":               st.column_config.NumberColumn("Skill Pass %", format="%.1f%%", help="Average of per-course Skill Pass % from course matrix (avg pass_count / participation per course, averaged across all courses)"),
                     "Academic Assessments Attempt %":        st.column_config.NumberColumn("Academic Attempt %", format="%.1f%%", help="Students who attempted graded assessments / total enrolled Ã— 100"),
@@ -8322,8 +8322,8 @@ def main():
                     # Lectures
                     ("Lectures - Designed",             "Total lecture sessions planned for the full semester."),
                     ("Lectures - Designed Till Date",   "Pro-rated lecture sessions expected by today based on semester pacing."),
-                    ("Lectures - Scheduled",            "Lecture sessions actually delivered / scheduled so far."),
-                    ("Lectures - Deviation %",          "Positive = ahead of schedule (forward). Negative = behind schedule."),
+                    ("Lectures - Scheduled",            "COUNT DISTINCT lecture session_ids with delivery_status_vs_plan = 'ON_TIME' or 'DELIVERED_DELAYED', averaged across sections (source: session_adherence)."),
+                    ("Lectures - Deviation %",          "Positive = ahead of schedule (forward). Negative = behind schedule. Formula: (Scheduled - Designed Till Date) / Designed Till Date x 100."),
                     # Classroom Quiz
                     ("CR Quiz - Attend %",   "% of expected student-quiz pairs that attempted classroom (LP_QUIZ) quizzes."),
                     ("CR Quiz - Q Attempt",  "Count of distinct student-quiz attempt pairs for classroom quizzes."),
@@ -8331,21 +8331,21 @@ def main():
                     # Practice
                     ("Practice - Designed",             "Total practice sessions planned for the full semester."),
                     ("Practice - Designed Till Date",   "Pro-rated practice sessions expected by today."),
-                    ("Practice - Scheduled",            "Practice sessions actually delivered so far."),
+                    ("Practice - Scheduled",            "COUNT DISTINCT practice session_ids with delivery_status_vs_plan = 'ON_TIME' or 'DELIVERED_DELAYED', averaged across sections (source: session_adherence)."),
                     ("Practice - Deviation %",          "Positive = ahead of schedule (forward). Negative = behind schedule."),
                     # Practice Completion
                     ("Completion %",  "% of assigned practice content units completed by students."),
                     # Module Quiz
                     ("Module Quiz - Designed",            "Total module quiz (EXAM-type) sessions planned for the full semester."),
                     ("Module Quiz - Designed Till Date",  "Pro-rated module quizzes expected by today based on semester pacing."),
-                    ("Module Quiz - Scheduled",           "Module quiz sessions actually conducted so far."),
+                    ("Module Quiz - Scheduled",           "COUNT DISTINCT EXAM session_ids with delivery_status_vs_plan = 'ON_TIME' or 'DELIVERED_DELAYED', averaged across sections (source: session_adherence)."),
                     ("Module Quiz - Deviation %",         "Positive = ahead of schedule (forward). Negative = behind schedule."),
                     ("Module Quiz - Attend %",            "% of expected student-quiz pairs that attempted module quizzes = attempts / (roster x quiz count) x 100."),
                     ("Module Quiz - Pass %",              "% of module quiz participants who passed (result = PASS or score >= 80%)."),
                     # Skill Assessment
                     ("Skill - Designed",            "Number of skill assessments planned (5 per semester)."),
                     ("Skill - Designed Till Date",  "Pro-rated skill assessments expected by today."),
-                    ("Skill - Scheduled",           "Skill assessment sessions conducted so far."),
+                    ("Skill - Scheduled",           "COUNT DISTINCT EXAM session_ids whose session_name_enum contains 'skill' and delivery_status_vs_plan = 'ON_TIME' or 'DELIVERED_DELAYED', averaged across sections (source: session_adherence)."),
                     ("Skill - Attend %",            "% of expected student-assessment pairs that attempted skill assessments = pairs / (roster x assessment count) x 100."),
                     ("Skill - Pass %",              "% of skill assessment participants who passed (score >= 80%)."),
                     # Academic
