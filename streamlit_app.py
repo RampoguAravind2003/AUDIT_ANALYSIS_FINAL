@@ -7431,7 +7431,7 @@ def main():
                 "Universities": len(data["universities"]),
                 "Students": int(data["totalStudents"]),
                 "Avg Slots": round(data["avgSessions"], 1),
-                "Avg Delivery %": round(data["avgOverallCompletion"], 1),
+                "Avg Scheduled %": round(data["avgOverallCompletion"], 1),
                 "Avg Performance %": round(data["avgAssessmentScore"] * 100, 1) if data["avgAssessmentScore"] is not None else None,
                 "Avg Allotted Hours": round(data["avgAllottedHours"], 1) if data["avgAllottedHours"] else None,
             }
@@ -7544,7 +7544,7 @@ def main():
                 "Lecture Delivery %": round(item["avgLectureCompletion"], 1),
                 "Practice Delivery %": round(item["avgPracticeCompletion"], 1),
                 "Exam Delivery %": round(item["avgExamCompletion"], 1),
-                "Avg Delivery %": round(item["avgOverallCompletion"], 1),
+                "Avg Scheduled %": round(item["avgOverallCompletion"], 1),
                 "Avg Performance %": round(item["avgAssessmentScore"] * 100, 1) if item["avgAssessmentScore"] is not None else None,
                 "Participation #": round(item["avgParticipation"], 1) if item["avgParticipation"] is not None else None,
                 "Skill Performance %": round(item["avgSkillScore"] * 100, 1) if item.get("avgSkillScore") is not None else None,
@@ -7554,7 +7554,7 @@ def main():
             }
             for item in universities
         ]
-    ).sort_values(["Avg Delivery %", "University"], ascending=[False, True]).reset_index(drop=True)
+    ).sort_values(["Avg Scheduled %", "University"], ascending=[False, True]).reset_index(drop=True)
 
     _quiz_pass_pct = (new_metrics.get("quiz", {}).get(selected_university) or {}).get("classroom_quiz_pass_pct")
     _subject_map   = dict(portal_subject_map)
@@ -7576,7 +7576,7 @@ def main():
         top_metrics.append({"label": "Avg Allotted Hours", "value": format_metric_value(avg_allotted_hours, decimals=1), "help": "Average planned hours for universities in the selected design view."})
     top_metrics.extend(
         [
-            {"label": "Avg Delivery %", "value": format_metric_value(avg_delivery, suffix="%"), "help": "Average university delivery across lecture, practice, and exam completion."},
+            {"label": "Avg Scheduled %", "value": format_metric_value(avg_delivery, suffix="%"), "help": "Average university scheduled % across lecture, practice, and module quiz completion."},
             {"label": "Avg Performance %", "value": format_metric_value(avg_score, suffix="%"), "help": "Average assessment performance % across all universities with assessment data (mean of per-university avg score %)."},
             {"label": "Skill Performance %", "value": format_metric_value(avg_skill_score, suffix="%"), "help": "Average skill assessment performance % across all universities with skill assessment data (mean of per-university avg skill score %)."},
             {"label": "Academic Assessment Performance %", "value": format_metric_value(avg_graded_score, suffix="%"), "help": "Average academic assessment performance % across all universities with academic assessment data (mean of per-university avg graded score %)."},
@@ -7776,7 +7776,7 @@ def main():
             "border-radius:12px;padding:4px 0 0 0;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow:hidden;margin-bottom:8px;'>",
             unsafe_allow_html=True,
         )
-        _series_styled = _apply_pct_colors(series_df, ["Avg Delivery %", "Avg Performance %", "Skill Performance %", "Academic Assessment Performance %"])
+        _series_styled = _apply_pct_colors(series_df, ["Avg Scheduled %", "Avg Performance %", "Skill Performance %", "Academic Assessment Performance %"])
         st.dataframe(
             _series_styled,
             use_container_width=True,
@@ -7786,7 +7786,7 @@ def main():
                 "Universities":                           st.column_config.NumberColumn("Universities", format="%d", width="small"),
                 "Students":                               st.column_config.NumberColumn("Students", format="%d", width="small"),
                 "Avg Slots":                              st.column_config.NumberColumn("Avg Slots", format="%.1f", width="small"),
-                "Avg Delivery %":                         st.column_config.NumberColumn("Avg Delivery %", format="%.1f%%"),
+                "Avg Scheduled %":                         st.column_config.NumberColumn("Avg Scheduled %", format="%.1f%%"),
                 "Avg Performance %":                      st.column_config.NumberColumn("Avg Performance %", format="%.1f%%"),
                 "Skill Performance %":                    st.column_config.NumberColumn("Skill Performance %", format="%.1f%%"),
                 "Academic Assessment Performance %":      st.column_config.NumberColumn("Academic Performance %", format="%.1f%%"),
@@ -7796,13 +7796,13 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
     elif current_view == "University Comparison":
-        render_section_header("University benchmark", "Lecture, practice, and exam delivery percentages are shown by university. Avg Delivery % is the overall university delivery view.")
+        render_section_header("University benchmark", "Lecture, practice, and module quiz scheduled percentages are shown by university. Avg Scheduled % is the overall university scheduled view.")
         st.markdown(
             "<div style='background:var(--surface,#fff);border:1px solid var(--border,#e2e8f0);"
             "border-radius:12px;padding:4px 0 0 0;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow:hidden;margin-bottom:8px;'>",
             unsafe_allow_html=True,
         )
-        _univ_pct_cols = ["Lecture Delivery %", "Practice Delivery %", "Exam Delivery %", "Avg Delivery %", "Avg Performance %", "Skill Performance %", "Academic Assessment Performance %"]
+        _univ_pct_cols = ["Lecture Delivery %", "Practice Delivery %", "Exam Delivery %", "Avg Scheduled %", "Avg Performance %", "Skill Performance %", "Academic Assessment Performance %"]
         _univ_styled = _apply_pct_colors(university_rows, _univ_pct_cols)
         st.dataframe(
             _univ_styled,
@@ -7816,7 +7816,7 @@ def main():
                 "Lecture Delivery %":                        st.column_config.NumberColumn("Lecture Delivery %", format="%.1f%%"),
                 "Practice Delivery %":                       st.column_config.NumberColumn("Practice Delivery %", format="%.1f%%"),
                 "Exam Delivery %":                           st.column_config.NumberColumn("Exam Delivery %", format="%.1f%%"),
-                "Avg Delivery %":                            st.column_config.NumberColumn("Avg Delivery %", format="%.1f%%"),
+                "Avg Scheduled %":                            st.column_config.NumberColumn("Avg Scheduled %", format="%.1f%%"),
                 "Avg Performance %":                         st.column_config.NumberColumn("Avg Performance %", format="%.1f%%"),
                 "Participation #":                           st.column_config.NumberColumn("Participation #", format="%.1f", width="small"),
                 "Skill Performance %":                       st.column_config.NumberColumn("Skill Performance %", format="%.1f%%"),
