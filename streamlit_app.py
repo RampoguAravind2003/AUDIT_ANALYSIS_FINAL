@@ -3053,54 +3053,43 @@ def fetch_quiz_pass_by_course(batch: str, semester: str, institute: str, section
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
     """
-    Returns per-course module quiz conduction % from the schedule table.
-    Uses session_type='EXAM' rows (same source as institute-level module quiz conduction).
+    Returns per-course EXAM session conduction % from session_adherence.
 
-    Conduction % = conducted EXAM sessions / planned EXAM sessions per course Ã— 100.
+    Conducted = delivery_status_vs_plan IN ('ON_TIME', 'DELIVERED_DELAYED')
     Columns returned: course_title, exam_conducted, exam_planned, exam_conduction_pct
     """
     refs = get_table_refs()
 
-    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
-    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
-    course_col = first_existing_column(
-        sched_cols,
-        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
-    )
-    status_col = first_existing_column(sched_cols, ["session_status", "session_delivery_status", "delivery_status", "status"]) or "session_status"
-    if not course_col:
-        return pd.DataFrame(columns=["course_title", "exam_conducted", "exam_planned", "exam_conduction_pct"])
-
-    # All EXAM session_ids for a course = module quizzes. No name filter applied —
-    # consistent with institute-level which counts all EXAM sessions.
     where_clauses = [
-        f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
-        f"UPPER(TRIM(CAST(s.session_type AS STRING))) = 'EXAM'",
-        f"TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''",
+        f"LOWER(TRIM(COALESCE(sa.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "UPPER(CAST(sa.session_type AS STRING)) = 'EXAM'",
+        "TRIM(COALESCE(sa.course_title, '')) != ''",
+        "TRIM(COALESCE(sa.session_id, '')) != ''",
     ]
-    window_clause = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
-    if window_clause:
-        where_clauses.append(window_clause)
     if batch and batch.strip():
-        where_clauses.append(batch_sql_filter(batch, "s.batch_name"))
+        where_clauses.append(batch_sql_filter(batch, "sa.batch_name"))
     if section:
-        where_clauses.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
+        where_clauses.append(f"LOWER(TRIM(COALESCE(sa.section_name, ''))) = LOWER('{sql_escape(section)}')")
 
     sql = f"""
-        SELECT
-          TRIM(CAST(s.{course_col} AS STRING)) AS course_title,
-          COUNT(DISTINCT IF(
-            UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
-            s.session_id, NULL)) AS exam_conducted,
-          COUNT(DISTINCT s.session_id) AS exam_planned,
-          ROUND(SAFE_DIVIDE(
+        WITH per_section AS (
+          SELECT
+            TRIM(sa.course_title)                                                   AS course_title,
+            COALESCE(NULLIF(TRIM(sa.section_name), ''), 'Unknown')                  AS section,
             COUNT(DISTINCT IF(
-              UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
-              s.session_id, NULL)),
-            NULLIF(COUNT(DISTINCT s.session_id), 0)
-          ) * 100, 1) AS exam_conduction_pct
-        FROM {refs["schedule"]} s
-        WHERE {' AND '.join(where_clauses)}
+              UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              sa.session_id, NULL))                                                  AS exam_conducted,
+            COUNT(DISTINCT sa.session_id)                                            AS exam_planned
+          FROM {refs["session_adherence"]} sa
+          WHERE {' AND '.join(where_clauses)}
+          GROUP BY course_title, section
+        )
+        SELECT
+          course_title,
+          ROUND(AVG(exam_conducted), 1) AS exam_conducted,
+          ROUND(AVG(exam_planned),   1) AS exam_planned,
+          ROUND(SAFE_DIVIDE(AVG(exam_conducted), NULLIF(AVG(exam_planned), 0)) * 100, 1) AS exam_conduction_pct
+        FROM per_section
         GROUP BY course_title
         ORDER BY course_title
     """
@@ -3113,61 +3102,46 @@ def fetch_exam_delivery_by_course(batch: str, semester: str, institute: str, sec
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_course_scheduled_counts(batch: str, semester: str, institute: str, section: str = "") -> pd.DataFrame:
     """
-    Returns per-course scheduled session counts directly from the schedule table.
+    Returns per-course scheduled session counts directly from session_adherence.
 
-    Scheduled = COUNT(DISTINCT session_id WHERE session_status IN
-                      'COMPLETED' / 'DELIVERED' / 'CONDUCTED')
-    averaged across sections.
+    Scheduled = COUNT(DISTINCT session_id WHERE delivery_status_vs_plan IN ('ON_TIME', 'DELIVERED_DELAYED'))
+    grouped by course_title, averaged across sections.
 
+    Source: session_adherence table (has course_title + delivery_status_vs_plan + session_id).
     Columns: course_title, lec_scheduled, prac_scheduled, mq_scheduled
-
-    Note: course_title is the raw string from the schedule table's course column.
-    Callers must use normalize_text() matching to align these titles with portal_courses names.
     """
     refs = get_table_refs()
     _empty = pd.DataFrame(columns=["course_title", "lec_scheduled", "prac_scheduled", "mq_scheduled"])
 
-    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
-    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
-    course_col = first_existing_column(
-        sched_cols,
-        ["semester_course_title", "course_title", "subject_name", "course_name", "sem_course_title"],
-    )
-    status_col = first_existing_column(sched_cols, ["session_status", "session_delivery_status", "delivery_status", "status"]) or "session_status"
-    if not course_col:
-        return _empty
-
     where_clauses = [
-        f"LOWER(TRIM(COALESCE(s.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
-        "UPPER(CAST(s.session_type AS STRING)) IN ('LECTURE', 'PRACTICE', 'EXAM')",
-        f"TRIM(COALESCE(CAST(s.{course_col} AS STRING), '')) != ''",
+        f"LOWER(TRIM(COALESCE(sa.institute_name, ''))) = LOWER('{sql_escape(institute)}')",
+        "UPPER(CAST(sa.session_type AS STRING)) IN ('LECTURE', 'PRACTICE', 'EXAM')",
+        "TRIM(COALESCE(sa.course_title, '')) != ''",
+        "TRIM(COALESCE(sa.session_id, '')) != ''",
     ]
-    window_clause = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
-    if window_clause:
-        where_clauses.append(window_clause)
     if batch and batch.strip():
-        where_clauses.append(batch_sql_filter(batch, "s.batch_name"))
+        where_clauses.append(batch_sql_filter(batch, "sa.batch_name"))
     if section:
-        where_clauses.append(f"LOWER(TRIM(COALESCE(s.section_name, ''))) = LOWER('{sql_escape(section)}')")
+        where_clauses.append(f"LOWER(TRIM(COALESCE(sa.section_name, ''))) = LOWER('{sql_escape(section)}')")
 
     sql = f"""
         WITH per_section AS (
           SELECT
-            TRIM(CAST(s.{course_col} AS STRING))                   AS course_title,
-            COALESCE(NULLIF(TRIM(s.section_name), ''), 'Unknown')  AS section,
+            TRIM(sa.course_title)                                          AS course_title,
+            COALESCE(NULLIF(TRIM(sa.section_name), ''), 'Unknown')         AS section,
             COUNT(DISTINCT IF(
-              UPPER(CAST(s.session_type AS STRING)) = 'LECTURE'
-              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
-              s.session_id, NULL))                                  AS lec_scheduled,
+              UPPER(CAST(sa.session_type AS STRING)) = 'LECTURE'
+              AND UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              sa.session_id, NULL))                                         AS lec_scheduled,
             COUNT(DISTINCT IF(
-              UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE'
-              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
-              s.session_id, NULL))                                  AS prac_scheduled,
+              UPPER(CAST(sa.session_type AS STRING)) = 'PRACTICE'
+              AND UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              sa.session_id, NULL))                                         AS prac_scheduled,
             COUNT(DISTINCT IF(
-              UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
-              s.session_id, NULL))                                  AS mq_scheduled
-          FROM {refs["schedule"]} s
+              UPPER(CAST(sa.session_type AS STRING)) = 'EXAM'
+              AND UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              sa.session_id, NULL))                                         AS mq_scheduled
+          FROM {refs["session_adherence"]} sa
           WHERE {' AND '.join(where_clauses)}
           GROUP BY course_title, section
         )
@@ -3262,119 +3236,104 @@ def fetch_module_quiz_pass_by_course(batch: str, semester: str, institute: str, 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_session_delivery_metrics(batch: str, semester: str) -> pd.DataFrame:
     """
-    Returns per-institute practice delivery, module quiz conduction, and skill assessment
-    conduction metrics.
+    Returns per-institute delivery metrics entirely from session_adherence.
 
-    Actual schema used:
-      schedule table: institute_name, section_name, session_type, session_status, session_id
-      session_adherence table: institute_name, section_name, session_type, session_name_enum,
-                               total_sessions_planned, total_sessions_delivered
-
-    Practice Delivery %      = SUM(delivered PRACTICE) / SUM(planned PRACTICE) Ã— 100
-                               (from session_adherence cumulative MAX per group)
-    Module Quiz Conduction % = COUNT DISTINCT EXAM session_ids conducted /
-                               COUNT DISTINCT EXAM session_ids planned Ã— 100
-                               (from schedule table -- all EXAM type sessions = module quizzes)
-    Skill Assessment Conduction % = SUM(delivered EXAM where name contains 'skill') /
-                                    SUM(planned  EXAM where name contains 'skill') Ã— 100
-
-    Note: total_sessions_planned / total_sessions_delivered are cumulative per-row values.
-    We take MAX per (institute, section, course_title) to get the latest running total,
-    then SUM across courses within an institute.
+    Delivered  = delivery_status_vs_plan IN ('ON_TIME', 'DELIVERED_DELAYED')
+    Planned    = all distinct session_ids (regardless of status)
+    Module Quiz = EXAM sessions whose session_name_enum LIKE 'quiz%' OR '%module%'
+    Skill Assess = EXAM sessions whose session_name_enum contains 'skill'
     """
     refs = get_table_refs()
-    # Detect actual session status column name in schedule table
-    sched_table_ref = get_config("BQ_SCHEDULE_TABLE", DEFAULT_SCHEDULE_TABLE)
-    sched_cols = fetch_table_columns(sched_table_ref, DEFAULT_SCHEDULE_TABLE)
-    status_col = first_existing_column(sched_cols, ["session_status", "session_delivery_status", "delivery_status", "status"]) or "session_status"
 
-    where_clauses = ["TRIM(COALESCE(sa.institute_name, '')) != ''"]
+    where_clauses = [
+        "TRIM(COALESCE(sa.institute_name, '')) != ''",
+        "TRIM(COALESCE(sa.session_id, '')) != ''",
+    ]
     window_clause = get_semester_window_clause(semester, batch, "sa.institute_name", "sa.session_date")
     if window_clause:
         where_clauses.append(window_clause)
     if batch and batch.strip():
         where_clauses.append(batch_sql_filter(batch, "sa.batch_name"))
 
-    schedule_where = ["TRIM(COALESCE(s.institute_name, '')) != ''"]
-    schedule_window = get_semester_window_clause(semester, batch, "s.institute_name", "DATE(s.session_date)")
-    if schedule_window:
-        schedule_where.append(schedule_window)
-    if batch and batch.strip():
-        schedule_where.append(batch_sql_filter(batch, "s.batch_name"))
-
     sql = f"""
-        WITH schedule_delivery AS (
+        WITH per_section AS (
           SELECT
-            s.institute_name AS institute,
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'LECTURE'
-                              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS lecture_delivered,
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'LECTURE', s.session_id, NULL)) AS lecture_planned,
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE'
-                              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS practice_delivered,
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'PRACTICE', s.session_id, NULL)) AS practice_planned,
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'), s.session_id, NULL)) AS exam_delivered,
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM', s.session_id, NULL)) AS exam_planned,
-            -- Module Quiz: EXAM sessions whose name starts with quiz or contains module
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND UPPER(COALESCE(s.{status_col}, '')) IN ('ON_TIME', 'DELIVERED_DELAYED')
-                              AND (LOWER(COALESCE(s.session_name_enum, '')) LIKE 'quiz%'
-                                   OR LOWER(COALESCE(s.session_name_enum, '')) LIKE '%module%'),
-                              s.session_id, NULL)) AS mq_delivered,
-            COUNT(DISTINCT IF(UPPER(CAST(s.session_type AS STRING)) = 'EXAM'
-                              AND (LOWER(COALESCE(s.session_name_enum, '')) LIKE 'quiz%'
-                                   OR LOWER(COALESCE(s.session_name_enum, '')) LIKE '%module%'),
-                              s.session_id, NULL)) AS mq_planned
-          FROM {refs["schedule"]} s
-          WHERE {' AND '.join(schedule_where)}
-          GROUP BY institute
-        ),
-        filtered AS (
-          SELECT
-            sa.institute_name    AS institute,
-            sa.section_name      AS section,
-            sa.course_title      AS course,
-            sa.session_type,
-            sa.session_name_enum,
-            -- Take the final (max) cumulative totals per section-course combination
-            MAX(sa.total_sessions_planned)   AS planned,
-            MAX(sa.total_sessions_delivered) AS delivered
+            TRIM(sa.institute_name)                                              AS institute,
+            COALESCE(NULLIF(TRIM(sa.section_name), ''), 'Unknown')               AS section,
+            -- Lecture
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'LECTURE'
+              AND UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              sa.session_id, NULL))                                               AS lecture_delivered,
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'LECTURE',
+              sa.session_id, NULL))                                               AS lecture_planned,
+            -- Practice
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'PRACTICE'
+              AND UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              sa.session_id, NULL))                                               AS practice_delivered,
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'PRACTICE',
+              sa.session_id, NULL))                                               AS practice_planned,
+            -- Exam (all)
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'EXAM'
+              AND UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED'),
+              sa.session_id, NULL))                                               AS exam_delivered,
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'EXAM',
+              sa.session_id, NULL))                                               AS exam_planned,
+            -- Module Quiz (EXAM whose name starts with QUIZ or contains MODULE)
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'EXAM'
+              AND UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED')
+              AND (LOWER(COALESCE(sa.session_name_enum, '')) LIKE 'quiz%'
+                   OR LOWER(COALESCE(sa.session_name_enum, '')) LIKE '%module%'),
+              sa.session_id, NULL))                                               AS mq_delivered,
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'EXAM'
+              AND (LOWER(COALESCE(sa.session_name_enum, '')) LIKE 'quiz%'
+                   OR LOWER(COALESCE(sa.session_name_enum, '')) LIKE '%module%'),
+              sa.session_id, NULL))                                               AS mq_planned,
+            -- Skill Assessment (EXAM whose name contains 'skill')
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'EXAM'
+              AND UPPER(COALESCE(sa.delivery_status_vs_plan, '')) IN ('ON_TIME', 'DELIVERED_DELAYED')
+              AND REGEXP_CONTAINS(LOWER(COALESCE(sa.session_name_enum, '')), r'skill'),
+              sa.session_id, NULL))                                               AS sa_delivered,
+            COUNT(DISTINCT IF(
+              UPPER(CAST(sa.session_type AS STRING)) = 'EXAM'
+              AND REGEXP_CONTAINS(LOWER(COALESCE(sa.session_name_enum, '')), r'skill'),
+              sa.session_id, NULL))                                               AS sa_planned
           FROM {refs["session_adherence"]} sa
           WHERE {' AND '.join(where_clauses)}
-          GROUP BY institute, section, course, session_type, session_name_enum
+          GROUP BY institute, section
         ),
         per_institute AS (
           SELECT
             institute,
-            SUM(CASE WHEN session_type = 'LECTURE'
-                     THEN COALESCE(delivered, 0) ELSE 0 END)          AS lecture_delivered,
-            SUM(CASE WHEN session_type = 'LECTURE'
-                     THEN COALESCE(planned, 0)   ELSE 0 END)          AS lecture_planned,
-            -- Practice Delivery
-            SUM(CASE WHEN session_type = 'PRACTICE'
-                     THEN COALESCE(delivered, 0) ELSE 0 END)          AS practice_delivered,
-            SUM(CASE WHEN session_type = 'PRACTICE'
-                     THEN COALESCE(planned, 0)   ELSE 0 END)          AS practice_planned,
-            -- Skill Assessment (EXAM sessions whose name contains 'skill')
-            SUM(CASE WHEN session_type = 'EXAM'
-                      AND REGEXP_CONTAINS(LOWER(COALESCE(session_name_enum, '')), r'skill')
-                     THEN COALESCE(delivered, 0) ELSE 0 END)          AS sa_delivered,
-            SUM(CASE WHEN session_type = 'EXAM'
-                      AND REGEXP_CONTAINS(LOWER(COALESCE(session_name_enum, '')), r'skill')
-                     THEN COALESCE(planned, 0)   ELSE 0 END)          AS sa_planned
-          FROM filtered
+            SUM(lecture_delivered)  AS lecture_delivered,
+            SUM(lecture_planned)    AS lecture_planned,
+            SUM(practice_delivered) AS practice_delivered,
+            SUM(practice_planned)   AS practice_planned,
+            SUM(exam_delivered)     AS exam_delivered,
+            SUM(exam_planned)       AS exam_planned,
+            SUM(mq_delivered)       AS mq_delivered,
+            SUM(mq_planned)         AS mq_planned,
+            SUM(sa_delivered)       AS sa_delivered,
+            SUM(sa_planned)         AS sa_planned
+          FROM per_section
           GROUP BY institute
         )
         SELECT
-          COALESCE(sd.institute, pi.institute) AS institute,
-          ROUND(SAFE_DIVIDE(sd.lecture_delivered,  NULLIF(sd.lecture_planned,  0)) * 100, 1) AS lecture_delivery_pct,
-          ROUND(SAFE_DIVIDE(sd.practice_delivered, NULLIF(sd.practice_planned, 0)) * 100, 1) AS practice_delivery_pct,
-          ROUND(SAFE_DIVIDE(sd.exam_delivered,     NULLIF(sd.exam_planned,     0)) * 100, 1) AS exam_delivery_pct,
-          -- Module Quiz Conduction: COUNT DISTINCT EXAM session_ids conducted / planned (from schedule table)
-          ROUND(SAFE_DIVIDE(sd.mq_delivered,       NULLIF(sd.mq_planned,       0)) * 100, 1) AS module_quiz_conduction_pct,
-          ROUND(SAFE_DIVIDE(pi.sa_delivered,       NULLIF(pi.sa_planned,       0)) * 100, 1) AS skill_conduction_pct
-        FROM schedule_delivery sd
-        FULL OUTER JOIN per_institute pi ON pi.institute = sd.institute
+          institute,
+          ROUND(SAFE_DIVIDE(lecture_delivered,  NULLIF(lecture_planned,  0)) * 100, 1) AS lecture_delivery_pct,
+          ROUND(SAFE_DIVIDE(practice_delivered, NULLIF(practice_planned, 0)) * 100, 1) AS practice_delivery_pct,
+          ROUND(SAFE_DIVIDE(exam_delivered,     NULLIF(exam_planned,     0)) * 100, 1) AS exam_delivery_pct,
+          ROUND(SAFE_DIVIDE(mq_delivered,       NULLIF(mq_planned,       0)) * 100, 1) AS module_quiz_conduction_pct,
+          ROUND(SAFE_DIVIDE(sa_delivered,       NULLIF(sa_planned,       0)) * 100, 1) AS skill_conduction_pct
+        FROM per_institute
         ORDER BY institute
     """
     try:
